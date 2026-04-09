@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG風ショップ</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="player-info" style="display: none;">
+        <span id="player-name">???</span> : <span id="player-gold">0</span> G
+    </div>
+
+    <div id="login-container" style="display: none; text-align: center;">
+        <h2>謎の商人へようこそ</h2>
+        <p>お店に入るには、Discordの身分証を見せてくれ。</p>
+        <br>
+        <button onclick="login()" style="background-color: #5865F2; padding: 10px 20px; font-size: 1.2em; border: none; border-radius: 8px;">Discordでログイン</button>
+    </div>
+
+    <div id="main-menu" style="display: none;">
+        <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px;">
+            <input type="password" id="admin-pass" placeholder="パスワード" style="width: 80px; background: #000; color:#fff; border:1px solid #555; border-radius:3px; padding:2px;">
+            <button onclick="checkAdmin()" style="padding: 2px 5px; font-size:0.8em;">管理</button>
+        </div>
+
+        <h1>どこへ向かう？</h1>
+        <div class="menu-grid">
+            <div class="menu-card" onclick="alert('カジノは準備中だ！')">
+                <i class="menu-icon icon-casino"></i>
+                <h3>カジノ</h3>
+            </div>
+            <div class="menu-card" onclick="goToBossSelect()">
+                <i class="menu-icon icon-boss"></i>
+                <h3>ボス</h3>
+            </div>
+            <div class="menu-card" onclick="goToShop()">
+                <i class="menu-icon icon-shop"></i>
+                <h3>謎の商人</h3>
+            </div>
+            <div class="menu-card" onclick="goToMainInventory()">
+                <div class="menu-icon-text">👜</div>
+                <h3>持ち物</h3>
+            </div>
+            <div class="menu-card" onclick="goToBank()">
+                <div class="menu-icon-text">🏦</div>
+                <h3>消費者金融</h3>
+            </div>
+        </div>
+    </div>
+
+    <div id="admin-container" style="display: none;">
+        <h1 style="color: #ff4444;">管理者画面</h1>
+        
+        <div class="admin-section">
+            <h3>ボス管理</h3>
+            <button onclick="adminReviveBoss()">現在のボスを復活</button><br><br>
+            <input type="number" id="admin-boss-hp" placeholder="ボスのHP" class="bank-input">
+            <button onclick="adminSetBossHp()">HP指定</button><br><br>
+            
+            <div style="margin-bottom: 5px; font-size: 0.9em; color: #aaa;">
+                解放するボスを選択 (本日限定):<br>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="1">月</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="2">火</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="3">水</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="4">木</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="5">金</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="6">土</label>
+                <label style="margin-right: 5px;"><input type="checkbox" name="unlock-boss-day" value="0">日</label>
+            </div>
+            <button onclick="adminUnlockSelectedBosses()">選択したボスを解放</button>
+        </div>
+
+        <div class="admin-section">
+            <h3>プレイヤー管理</h3>
+            <input type="number" id="admin-player-hp" placeholder="プレイヤーHP" class="bank-input">
+            <button onclick="adminSetPlayerHp()">プレイヤーHP指定</button><br><br>
+            <input type="number" id="admin-player-gold" placeholder="G (所持金)" class="bank-input">
+            <button onclick="adminSetGold()">自分のG設定</button>
+        </div>
+
+        <div class="admin-section">
+            <h3>ショップ管理 (金額・個数)</h3>
+            <select id="admin-shop-item-select" class="bank-input" style="width: 150px;"></select>
+            <input type="number" id="admin-shop-price" placeholder="価格" class="bank-input" style="width: 80px;">
+            <input type="number" id="admin-shop-qty" placeholder="所持数" class="bank-input" style="width: 80px;">
+            <button onclick="adminSetShopItem()">設定</button>
+        </div>
+
+        <button onclick="returnToMenuFromAdmin()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
+    </div>
+
+    <div id="main-inventory-container" style="display: none;">
+        <h1>持ち物（アイテム使用）</h1>
+        <div id="main-inventory-view" class="category" style="display: block;">
+            <ul id="main-inventory-list"></ul>
+        </div>
+        <button onclick="returnToMenuFromMainInventory()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
+    </div>
+
+    <div id="bank-container" style="display: none;">
+        <h1>消費者金融</h1>
+        <div style="text-align: center; margin-bottom: 10px;">
+            <img src="image/staff.png" alt="スタッフ" style="max-height: 150px;">
+        </div>
+        
+        <div class="tabs">
+            <button id="tab-bank-install" class="tab-btn" onclick="switchBankTab('installment')">分割返済</button>
+            <button id="tab-bank-lump" class="tab-btn active" onclick="switchBankTab('lump')">一括返済</button>
+            <button id="tab-bank-invest" class="tab-btn" onclick="switchBankTab('invest')">投資</button>
+        </div>
+
+        <div id="bank-content-area" style="background: #111; padding: 15px; border-radius: 8px; border: 1px solid #444;">
+        </div>
+
+        <button onclick="returnToMenuFromBank()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
+    </div>
+
+    <div id="shop-container" style="display: none;">
+        <h1>ショップ</h1>
+        
+        <div class="tabs">
+            <button id="tab-items" class="tab-btn active" onclick="switchTab('items')"><i class="icon icon-item"></i>アイテム</button>
+            <button id="tab-weapons" class="tab-btn" onclick="switchTab('weapons')"><i class="icon icon-weapon"></i>武 器</button>
+            <button id="tab-others" class="tab-btn" onclick="switchTab('others')"><i class="icon icon-other"></i>その他</button>
+            <button id="tab-inventory" class="tab-btn inventory-btn" onclick="switchTab('inventory')">👜 売却用</button>
+        </div>
+        
+        <div id="items-view" class="category">
+            <ul id="item-list"></ul>
+        </div>
+
+        <div id="weapons-view" class="category" style="display: none;">
+            <ul id="weapon-list"></ul>
+        </div>
+
+        <div id="others-view" class="category" style="display: none;">
+            <ul id="other-list"></ul>
+        </div>
+
+        <div id="inventory-view" class="category" style="display: none;">
+            <h2>◆ 売却用 持ち物 ◆</h2>
+            <p style="text-align: center; font-size: 0.9em; color: #ccc;">※売値は買値の1/20になります</p>
+            <ul id="inventory-list"></ul>
+        </div>
+
+        <div id="cart-container">
+            <h2>◆ カート ◆</h2>
+            <ul id="cart-list"></ul>
+            <div class="cart-total">合計: <span id="cart-total-price">0</span> G</div>
+            <button class="checkout-btn" onclick="checkout()"><i class="icon icon-checkout"></i> 会計する</button>
+        </div>
+        
+        <button onclick="goToMenu()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
+    </div>
+
+    <div id="boss-select-container" style="display: none;">
+        <h1>ボストーナメント</h1>
+        <p style="text-align: center;">本日の曜日のみ挑戦可能です</p>
+        <div class="day-selector">
+            <button id="btn-day-1" class="day-btn" onclick="startBoss(1)">月曜日</button>
+            <button id="btn-day-2" class="day-btn" onclick="startBoss(2)">火曜日</button>
+            <button id="btn-day-3" class="day-btn" onclick="startBoss(3)">水曜日</button>
+            <button id="btn-day-4" class="day-btn" onclick="startBoss(4)">木曜日</button>
+            <button id="btn-day-5" class="day-btn" onclick="startBoss(5)">金曜日</button>
+            <button id="btn-day-6" class="day-btn" onclick="startBoss(6)">土曜日</button>
+            <button id="btn-day-0" class="day-btn" onclick="startBoss(0)">日曜日</button>
+        </div>
+        <button onclick="returnToMenuFromBossSelect()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
+    </div>
+
+    <div id="boss-battle-container" style="display: none; position: relative;">
+        <div class="boss-header-wrapper">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <span style="font-size: 0.9em;">プレイヤーHP</span>
+                <span id="player-hp-text" style="font-size: 0.9em; font-weight: bold;">0 / 0</span>
+            </div>
+            <div class="hp-bar-bg" style="height: 15px; margin-bottom: 10px;">
+                <div id="player-hp-bar" class="hp-bar-fill" style="background-color: #4CAF50;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 id="boss-name-display" style="color: #ff4444; margin: 0; border: none;">???</h2>
+                <span id="participant-count" style="font-weight: bold; color: #aaa;">参加者数: 0人</span>
+            </div>
+        </div>
+        
+        <div class="boss-image-area" style="display: flex; justify-content: center; align-items: flex-end; min-height: 250px; gap: 10px; margin: 20px 0;">
+            <div id="clone-left" style="display: none; width: 25%; text-align: center;">
+                <div class="hp-bar-bg" style="height: 8px; margin-bottom: 2px;">
+                    <div id="clone-left-hp-bar" class="hp-bar-fill" style="background-color:#ffcc00;"></div>
+                </div>
+                <img id="clone-left-img" src="" style="width: 100%;">
+            </div>
+            
+            <div class="boss-image-wrapper" style="width: 50%; text-align: center;">
+                <img id="boss-image" src="" alt="ボス画像" style="max-width: 100%; max-height: 250px;">
+            </div>
+
+            <div id="clone-right" style="display: none; width: 25%; text-align: center;">
+                <div class="hp-bar-bg" style="height: 8px; margin-bottom: 2px;">
+                    <div id="clone-right-hp-bar" class="hp-bar-fill" style="background-color:#ffcc00;"></div>
+                </div>
+                <img id="clone-right-img" src="" style="width: 100%;">
+            </div>
+        </div>
+        
+        <div class="hp-bar-bg">
+            <div id="boss-hp-bar" class="hp-bar-fill"></div>
+        </div>
+        <div id="boss-hp-text" style="text-align: center; margin-bottom: 10px; font-weight: bold;">0 / 0</div>
+
+        <div id="battle-log" class="battle-log"></div>
+
+        <div id="join-boss-overlay">
+            <button id="btn-join-boss" class="join-btn" onclick="joinBoss()">▶ 参加する</button>
+        </div>
+
+        <div class="battle-actions" id="battle-actions-container" style="pointer-events: none; opacity: 0.5;">
+            <div class="attack-ui-container">
+                <div class="attack-btn-wrapper relic-wrapper">
+                    <div style="position: relative;">
+                        <button class="skill-btn btn-relic" onclick="useSkill('relic')"></button>
+                        <button class="skill-btn btn-return" onclick="switchRelic()"></button>
+                    </div>
+                    <span class="skill-label" id="lbl-relic">聖遺物1</span>
+                </div>
+                <div class="attack-btn-wrapper accel-wrapper">
+                    <button class="skill-btn btn-accel" onclick="useSkill('accel')"></button>
+                    <span class="skill-label" id="lbl-accel">集団加速</span>
+                </div>
+                <div class="attack-btn-wrapper shield-wrapper">
+                    <button class="skill-btn btn-shield" onclick="useSkill('shield')"></button>
+                    <span class="skill-label" id="lbl-shield">シールド</span>
+                </div>
+                <div class="attack-btn-wrapper fireball-wrapper">
+                    <button class="skill-btn btn-fireball" onclick="useSkill('fireball')"></button>
+                    <span class="skill-label" id="lbl-fireball">ファイヤーボール</span>
+                </div>
+            </div>
+        </div>
+        
+        <button onclick="returnToMenuFromBattle()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ 逃げる（メニューに戻る）</button>
+    </div>
+
+    <script src="shop.js"></script>
+    <script src="boss_select.js"></script>
+    <script src="ability.js"></script>
+    <script src="boss.js"></script>
+    <script src="bank.js"></script>
+</body>
+</html>

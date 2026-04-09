@@ -1,0 +1,459 @@
+/* =========================================
+   ベース設定
+========================================= */
+body {
+    background-color: #111;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+    margin: 0;
+}
+
+#player-info {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background-color: #000;
+    border: 2px solid #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 1.2em;
+    font-weight: bold;
+    z-index: 100;
+}
+
+/* 各種コンテナの共通デザイン */
+#shop-container, 
+#login-container, 
+#main-menu, 
+#boss-select-container, 
+#boss-battle-container, 
+#main-inventory-container, 
+#bank-container,
+#admin-container {
+    border: 4px solid #fff;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-width: 600px;
+    background-color: #000;
+    margin-top: 60px;
+    position: relative;
+}
+
+h1, h2 {
+    text-align: center;
+    border-bottom: 2px dashed #fff;
+    padding-bottom: 10px;
+}
+
+ul { list-style-type: none; padding: 0; }
+
+li {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+}
+
+button {
+    background-color: #333;
+    color: #fff;
+    border: 2px solid #fff;
+    padding: 5px 15px;
+    cursor: pointer;
+    font-family: inherit;
+    border-radius: 4px;
+}
+button:hover { background-color: #666; }
+
+/* =========================================
+   タブとカートのデザイン
+========================================= */
+.tabs {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+.tab-btn {
+    flex: 1;
+    margin: 0 2px;
+    padding: 8px;
+    font-size: 0.9em;
+    background-color: #222;
+}
+.tab-btn.active {
+    background-color: #d4af37;
+    border-color: #d4af37;
+    color: #000;
+    font-weight: bold;
+}
+.inventory-btn { background-color: #1a4a1a; }
+.inventory-btn.active { background-color: #4CAF50; border-color: #4CAF50; color: #fff;}
+
+#cart-container {
+    margin-top: 30px;
+    border-top: 4px double #fff;
+    padding-top: 10px;
+}
+.cart-total {
+    text-align: right;
+    font-size: 1.3em;
+    font-weight: bold;
+    margin: 15px 0;
+    color: #d4af37;
+}
+.checkout-btn {
+    width: 100%;
+    background-color: #e0245e;
+    font-size: 1.2em;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.checkout-btn:hover { background-color: #c01b4c; }
+
+.qty-btn { width: 30px; height: 30px; padding: 0; font-weight: bold; margin: 0 5px; }
+.cart-qty-area { display: flex; align-items: center; }
+
+.sell-btn { background-color: #008CBA; }
+.sell-btn:hover { background-color: #005f7a; }
+
+.use-item-btn { background-color: #4CAF50; padding: 8px 20px; font-weight: bold;}
+.use-item-btn:hover { background-color: #45a049; }
+
+.shop-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+.item-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+.item-desc {
+    font-size: 0.85em;
+    color: #aaa;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #444;
+    white-space: pre-wrap;
+}
+
+/* =========================================
+   スプライト設定（アイコン類）
+========================================= */
+.icon {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background-image: url('image/shopui.png'); 
+    background-size: 300% 200%; 
+    vertical-align: middle;
+    margin-right: 5px;
+}
+.icon-item { background-position: 0% 0%; }
+.icon-weapon { background-position: 50% 0%; }
+.icon-other { background-position: 100% 0%; }
+.icon-checkout { background-position: 0% 100%; margin-right: 10px; }
+.icon-cart { background-position: 50% 100%; margin-right: 0; }
+
+.item-icon {
+    display: inline-block;
+    width: 60px;
+    height: 30px;
+    background-image: url('image/item.png'); 
+    background-size: 300% 200%; 
+    vertical-align: middle;
+    margin-right: 10px;
+}
+.icon-ticket { background-position: 0% 0%; }
+.icon-special { background-position: 50% 0%; }
+.icon-eraser { background-position: 100% 0%; }
+.icon-bakuchi { background-position: 0% 100%; width: 40px; height: 40px; }
+.icon-chokin { background-position: 50% 100%; width: 40px; height: 40px; }
+
+.item-icon.weapon-sprite {
+    width: 48px;  
+    height: 48px;
+    background-image: url('image/weapon.png');
+    background-size: 300% 300%; 
+}
+.icon-w1 { background-position: 0% 0%; }
+.icon-w2 { background-position: 50% 0%; }
+.icon-w3 { background-position: 100% 0%; }
+.icon-w4 { background-position: 0% 50%; }
+.icon-w5 { background-position: 50% 50%; }
+.icon-w6 { background-position: 100% 50%; }
+.icon-w7 { background-position: 0% 100%; }
+.icon-w8 { background-position: 50% 100%; }
+.icon-w9 { background-position: 100% 100%; }
+
+/* =========================================
+   メインメニュー（Gridレイアウト） ＆ 管理者画面
+========================================= */
+.menu-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 15px;
+    margin-top: 30px;
+    max-width: 600px;
+    margin-inline: auto; 
+}
+
+.menu-card {
+    background-color: #222;
+    border: 2px solid #555;
+    border-radius: 10px;
+    padding: 20px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+
+.menu-card:nth-child(1) { grid-column: 1 / 3; } 
+.menu-card:nth-child(2) { grid-column: 3 / 5; } 
+.menu-card:nth-child(3) { grid-column: 5 / 7; } 
+.menu-card:nth-child(4) { grid-column: 2 / 4; } 
+.menu-card:nth-child(5) { grid-column: 4 / 6; } 
+
+.menu-card:hover {
+    background-color: #333;
+    border-color: #d4af37;
+    transform: scale(1.05);
+}
+.menu-card h3 {
+    margin: 15px 0 0 0;
+    font-size: 1.1em;
+    border-bottom: none;
+}
+
+.menu-icon {
+    display: inline-block;
+    width: 80px;  
+    height: 80px;
+    background-image: url('image/casino.png');
+    background-size: 300% 100%;
+    background-repeat: no-repeat;
+}
+.icon-casino { background-position: 0% 0%; }   
+.icon-boss { background-position: 50% 0%; }    
+.icon-shop { background-position: 100% 0%; }   
+
+.menu-icon-text {
+    font-size: 3.5em; 
+    margin: 10px 0;
+    line-height: 1;
+}
+
+.admin-section {
+    border: 1px solid #444;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+    background: #1a1a1a;
+}
+.admin-section h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+    color: #4CAF50;
+}
+
+/* =========================================
+   ボストーナメントUI
+========================================= */
+.day-selector {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+.day-btn {
+    padding: 15px;
+    font-size: 1.2em;
+    background-color: #222;
+    border: 2px solid #555;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 8px;
+    flex: 1 1 30%; 
+    text-align: center;
+    transition: all 0.2s ease;
+}
+.day-btn:not(.disabled):hover {
+    background-color: #d4af37;
+    color: #000;
+    border-color: #d4af37;
+    font-weight: bold;
+    transform: scale(1.05);
+}
+.day-btn.disabled {
+    background-color: #111;
+    color: #444;
+    border-color: #222;
+    cursor: not-allowed;
+}
+
+.hp-bar-bg {
+    background-color: #333;
+    border: 2px solid #fff;
+    border-radius: 10px;
+    height: 25px;
+    width: 100%;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+.hp-bar-fill {
+    background-color: #ff3333;
+    height: 100%;
+    width: 100%;
+    transition: width 0.2s ease-out;
+}
+
+.battle-log {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 200px;  
+    height: 200px; 
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 2px solid #555;
+    border-radius: 8px;
+    padding: 10px;
+    overflow-y: auto;
+    font-size: 0.8em; 
+    color: #ddd;
+    line-height: 1.5;
+    z-index: 1000;
+}
+
+.boss-header-wrapper {
+    border-bottom: 2px dashed #444;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    padding: 0 10px;
+}
+
+#join-boss-overlay {
+    position: absolute;
+    bottom: 100px; 
+    right: 20px;
+    z-index: 9999; 
+    display: flex; 
+    justify-content: center;
+    align-items: center;
+}
+
+.join-btn {
+    background-color: #ff9800;
+    color: white;
+    font-size: 1.2em;
+    font-weight: bold;
+    padding: 15px 25px;
+    border: 2px solid #fff;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+    transition: transform 0.1s, background-color 0.2s;
+}
+.join-btn:hover { background-color: #e68a00; }
+.join-btn:active { transform: scale(0.95); }
+
+/* =========================================
+   スキルボタンのUIレイアウト
+========================================= */
+.attack-ui-container {
+    position: relative;
+    width: 350px;
+    height: 250px;
+    margin: 20px auto;
+}
+
+.attack-btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: absolute;
+}
+
+.relic-wrapper { top: 0; left: 140px; }
+.accel-wrapper { top: 60px; left: 60px; }
+.shield-wrapper { bottom: 20px; left: 20px; }
+.fireball-wrapper { bottom: 0px; left: 130px; }
+
+.skill-btn {
+    background-image: url('image/attack.png'); 
+    background-size: 300% 200%;
+    background-color: transparent;
+    border: none; 
+    border-radius: 50%;
+    cursor: pointer;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); 
+    transition: transform 0.1s ease;
+    outline: none;
+}
+
+.skill-btn:active { transform: scale(0.95); }
+
+/* ★修正：クールタイム中などの使用不可状態の表示 */
+.skill-btn:disabled {
+    filter: grayscale(100%) brightness(30%) sepia(100%) hue-rotate(180deg) drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+    cursor: not-allowed;
+}
+
+.btn-fireball { width: 100px; height: 100px; background-position: 0% 0%; }
+.btn-shield { width: 55px; height: 55px; background-position: 50% 0%; }
+.btn-accel { width: 55px; height: 55px; background-position: 100% 0%; }
+
+.btn-relic {
+    width: 70px;
+    height: 70px;
+    background-image: url('image/weapon.png'); 
+    background-size: 300% 300%;
+}
+
+.btn-return {
+    position: absolute;
+    bottom: -5px;
+    right: -10px;
+    width: 35px;
+    height: 35px;
+    background-image: url('image/attack.png');
+    background-position: 50% 100%;
+    z-index: 5;
+}
+
+.skill-label {
+    margin-top: 5px;
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 1px 1px 3px #000;
+}
+
+/* =========================================
+   銀行(消費者金融)用のスタイル
+========================================= */
+.bank-control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 15px 0;
+}
+.bank-input {
+    background: #000;
+    color: #fff;
+    border: 1px solid #555;
+    padding: 8px;
+    border-radius: 4px;
+    width: 100px;
+}
+.bank-slider {
+    flex-grow: 1;
+    margin: 0 15px;
+}
