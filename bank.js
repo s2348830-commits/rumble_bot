@@ -1,4 +1,4 @@
-let currentBankTab = 'lump'; // 'lump' (一括), 'installment' (分割), 'invest' (投資)
+let currentBankTab = 'lump'; 
 let bankState = {
     active: false,
     type: null,
@@ -10,11 +10,9 @@ let bankState = {
     lastRepaymentDate: null 
 };
 
-// SVGグラフの描画
 function drawBankGraph(containerId, borrowed, totalRepay, days) {
     const svgWidth = "100%";
     const svgHeight = 120;
-    
     const maxVal = 200000; 
     const padding = 20;
     
@@ -78,7 +76,6 @@ function renderBankUI() {
 
         let repayAmountText = bankState.type === 'lump' ? `${bankState.totalRepayment} G (一括)` : `${bankState.dailyRepayment} G (本日の分割分)`;
 
-        // ★変更：本日の分割返済がすでに終わっているかの判定（朝5時基準）
         const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
         const isPaidToday = (bankState.type === 'installment' && bankState.lastRepaymentDate === todayStr);
         
@@ -257,7 +254,6 @@ function checkBankPenalties() {
     let state = JSON.parse(savedState);
     if (!state.active) return;
 
-    // ★変更：朝5時基準
     const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
     
     if (state.lastUpdateDate !== todayStr) {
@@ -292,5 +288,34 @@ function checkBankPenalties() {
                 bankState = state;
             }
         }
+    }
+}
+
+// =========================================
+// ★新規追加：消費者金融の管理者機能
+// =========================================
+function adminResetBankDays() {
+    const savedState = localStorage.getItem('bankState');
+    if (savedState) {
+        let state = JSON.parse(savedState);
+        if (state.active) {
+            // 今日に日付を更新し、返済履歴をリセットして今日返せるようにする
+            state.lastUpdateDate = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+            state.lastRepaymentDate = null;
+            localStorage.setItem('bankState', JSON.stringify(state));
+            alert("消費者金融の経過日数をリセットし、ペナルティを回避・本日の返済を可能にしました。");
+            renderBankUI();
+        } else {
+            alert("現在借入していません。");
+        }
+    } else {
+        alert("現在借入していません。");
+    }
+}
+
+function adminClearBank() {
+    if (confirm("本当に借金データを強制的にクリアしますか？")) {
+        clearBankState();
+        alert("借金データをクリアしました。");
     }
 }

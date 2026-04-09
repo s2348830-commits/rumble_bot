@@ -1,4 +1,3 @@
-// 曜日別ボスのテンプレート
 const BOSS_TEMPLATES = {
     1: { name: "潜淵の主", maxHp: 1050000, image: "image/boss/月曜.png", defeatImage: "image/boss/月曜2.png", reward: 18000 },
     2: { name: "邪地ノ炎魔", maxHp: 1080000, image: "image/boss/火曜.png", defeatImage: "image/boss/火曜2.png", reward: 20000 },
@@ -24,7 +23,6 @@ let bossData = {
     playerMaxHp: 0,
     playerCurrentHp: 0,
     
-    // 曜日ごとの特殊状態
     hasRevived: false,
     clones: [],
     lastCloneSummonTime: 0,
@@ -37,9 +35,7 @@ let playerDebuffs = {
     burnUntil: 0,
     shockCount: 0 
 };
-let playerShieldUntil = 0; // プレイヤーのシールド効果時間
-
-// ★修正: fb を fireball に統一
+let playerShieldUntil = 0; 
 let skillCooldowns = { fireball: 0, shield: 0, accel: 0, relic: 0 };
 
 let hasJoined = false;
@@ -51,7 +47,10 @@ let uiUpdateIntervalId = null;
 let freezeTimeoutId = null;
 let currentRelicIndex = 0; 
 
-// --- localStorage 保存/復元 ---
+// ★追加：10時開始用の待機フラグ
+let waitIntervalId = null;
+let waitingForStart = false;
+
 function loadBossState() {
     const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
     const saved = localStorage.getItem('bossState_' + todayStr);
@@ -119,11 +118,9 @@ function clearTimers() {
     if (bossPassiveIntervalId) clearInterval(bossPassiveIntervalId);
     if (uiUpdateIntervalId) clearInterval(uiUpdateIntervalId);
     if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
+    if (waitIntervalId) clearInterval(waitIntervalId); // 待機タイマーもクリア
 }
 
-// ----------------------------------------
-// ボス開始・UI更新
-// ----------------------------------------
 function startBoss(dayIndex) {
     const today = typeof getLogicalDay === 'function' ? getLogicalDay() : new Date().getDay(); 
     
@@ -160,31 +157,26 @@ function startBoss(dayIndex) {
     document.getElementById('boss-image').src = bossData.isDefeated ? bossData.defeatImage : bossData.image;
     document.getElementById('boss-name-display').innerText = bossData.name;
     
+    // ★変更：参加状態や10時開始の待機チェック
     if (bossData.isDefeated || (bossData.participants > 0 && bossData.playerCurrentHp <= 0)) {
         document.getElementById('join-boss-overlay').style.display = 'none';
         disableActions();
+        clearTimers(); // タイマーは動かさない
     } 
     else if (hasJoined) {
         document.getElementById('join-boss-overlay').style.display = 'none';
-        document.getElementById('battle-actions-container').style.pointerEvents = 'auto';
-        document.getElementById('battle-actions-container').style.opacity = '1';
+        checkAndStartBattle();
     } 
     else {
         document.getElementById('join-boss-overlay').style.display = 'flex';
         document.getElementById('battle-actions-container').style.pointerEvents = 'none';
         document.getElementById('battle-actions-container').style.opacity = '0.5';
+        clearTimers(); // 参加するまで動かさない
     }
 
     updateBossUI();
     
     if (battleLogs.length === 0) logBattle(`凶悪な ${bossData.name} が現れた！`);
-
-    clearTimers();
-    if (!bossData.isDefeated && bossData.playerCurrentHp > 0) {
-        bossAttackIntervalId = setInterval(bossAttackLoop, 10000);
-        bossPassiveIntervalId = setInterval(bossPassiveLoop, 1000);
-        uiUpdateIntervalId = setInterval(updateSkillCooldownUI, 200);
-    }
 }
 
 function joinBoss() {
@@ -196,13 +188,46 @@ function joinBoss() {
     bossData.playerCurrentHp += 1000000; 
     
     document.getElementById('join-boss-overlay').style.display = 'none';
-    document.getElementById('battle-actions-container').style.pointerEvents = 'auto';
-    document.getElementById('battle-actions-container').style.opacity = '1';
     
     const pName = document.getElementById("player-name").innerText;
     logBattle(`${pName} が戦闘に参加した！（参加者数: ${bossData.participants}人）`);
     updateBossUI();
     
+    // 参加後に10時のチェックを行って開始
+    checkAndStartBattle();
+}
+
+// ★追加：10時チェックと戦闘開始の振り分け
+function checkAndStartBattle() {
+    const now = new Date();
+    if (now.getHours() < 10) {
+        waitingForStart = true;
+        document.getElementById('boss-waiting-overlay').style.display = 'flex';
+        document.getElementById('battle-actions-container').style.pointerEvents = 'none';
+        document.getElementById('battle-actions-container').style.opacity = '0.5';
+        
+        if (!waitIntervalId) {
+            waitIntervalId = setInterval(() => {
+                const checkNow = new Date();
+                if (checkNow.getHours() >= 10) {
+                    clearInterval(waitIntervalId);
+                    waitIntervalId = null;
+                    waitingForStart = false;
+                    startBattleTimers(); // 10時になったら開始
+                }
+            }, 1000);
+        }
+    } else {
+        startBattleTimers(); // 10時以降ならすぐ開始
+    }
+}
+
+// 戦闘のループタイマーを開始する
+function startBattleTimers() {
+    document.getElementById('boss-waiting-overlay').style.display = 'none';
+    document.getElementById('battle-actions-container').style.pointerEvents = 'auto';
+    document.getElementById('battle-actions-container').style.opacity = '1';
+
     clearTimers();
     bossAttackIntervalId = setInterval(bossAttackLoop, 10000);
     bossPassiveIntervalId = setInterval(bossPassiveLoop, 1000);
@@ -240,7 +265,6 @@ function updateBossUI() {
     document.getElementById('player-hp-bar').style.width = `${playerHpPercent}%`;
     document.getElementById('player-hp-text').innerText = `${Math.floor(bossData.playerCurrentHp)} / ${bossData.playerMaxHp}`;
     
-    // 木曜の分身UI更新
     if (bossData.dayIndex === 4 && bossData.clones && bossData.clones.length > 0) {
         if (bossData.clones[0] && bossData.clones[0].currentHp > 0) {
             document.getElementById('clone-left').style.display = 'block';
@@ -267,17 +291,12 @@ function updateBossUI() {
     saveBossState(); 
 }
 
-// ----------------------------------------
-// スキル・クールタイム管理
-// ----------------------------------------
 function setSkillCooldown(skill, baseSec) {
     let ms = baseSec * 1000;
     
-    // ★修正: fireball に統一
     if (bossData.dayIndex === 2 && (skill === 'fireball' || skill === 'accel')) {
         ms *= 1.5;
     }
-    // サンチャリス: CT30%短縮
     if (typeof window.sunchaliceActive !== 'undefined' && window.sunchaliceActive) {
         ms *= 0.7;
     }
@@ -289,24 +308,21 @@ function updateSkillCooldownUI() {
     const now = Date.now();
     const hpBar = document.getElementById('player-hp-bar');
     
-    // ★追加: シールド中はHPバーを水色にする
     if (hpBar) {
         if (now < playerShieldUntil) {
-            hpBar.style.backgroundColor = '#00d4ff'; // 水色
+            hpBar.style.backgroundColor = '#00d4ff'; 
         } else {
-            hpBar.style.backgroundColor = '#4CAF50'; // 緑色に戻す
+            hpBar.style.backgroundColor = '#4CAF50'; 
         }
     }
 
-    // 全滅時や未参加時はボタンの更新を行わない
-    if (!hasJoined || bossData.isDefeated || playerFrozen || bossData.playerCurrentHp <= 0) return;
+    // 待機中や全滅時はボタンを更新しない
+    if (!hasJoined || waitingForStart || bossData.isDefeated || playerFrozen || bossData.playerCurrentHp <= 0) return;
     
-    // ★修正: fb から fireball に変更
     ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
         let btn = document.querySelector(`.btn-${skill}`);
         if (btn) {
             if (now >= skillCooldowns[skill]) {
-                // 土曜: スキル封印チェック
                 if (skill === 'relic' && bossData.sealedRelics && bossData.sealedRelics.includes(relicsData[currentRelicIndex].name)) {
                     btn.disabled = true;
                     document.getElementById('lbl-relic').innerText = "封印中...";
@@ -355,29 +371,22 @@ function togglePlayerFreeze(isFrozen) {
     }
 }
 
-// ----------------------------------------
-// ボスのループ処理 (パッシブ / アクティブ)
-// ----------------------------------------
 function bossPassiveLoop() {
     if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
     
     const now = Date.now();
     const hpPercent = bossData.currentHp / bossData.maxHp;
 
-    // 月曜・水曜：自己再生
     if (bossData.dayIndex === 1) healBoss(10);
     if (bossData.dayIndex === 3) healBoss(hpPercent >= 0.5 ? 30 : 40);
 
-    // 火曜：燃焼ダメージ (10ダメージ/5s。パッシブは1秒ごとなので5回に1回処理)
     if (bossData.dayIndex === 2 && playerDebuffs.burnUntil > now) {
         if (Math.floor(now / 1000) % 5 === 0) {
-            dealDamageToPlayer(10, "燃焼", false); // 軽減処理は内部で行う
+            dealDamageToPlayer(10, "燃焼", false); 
         }
     }
 
-    // 木曜：分身召喚 ＆ 電撃ダメージ
     if (bossData.dayIndex === 4) {
-        // 6時間ごとに再召喚
         if (!bossData.lastCloneSummonTime || now >= bossData.lastCloneSummonTime + 6 * 60 * 60 * 1000) {
             let aliveClones = bossData.clones ? bossData.clones.filter(c => c.currentHp > 0) : [];
             if (aliveClones.length === 0) {
@@ -390,13 +399,11 @@ function bossPassiveLoop() {
                 updateBossUI();
             }
         }
-        // 電撃ダメージ (500/s × 感染人数)
         if (playerDebuffs.shockCount > 0) {
             dealDamageToPlayer(500 * playerDebuffs.shockCount, "電撃", false);
         }
     }
 
-    // 土曜：スキル封印
     if (bossData.dayIndex === 6) {
         if (!bossData.lastSealTime || now >= bossData.lastSealTime + 60 * 60 * 1000) {
             let available = relicsData.map(r => r.name);
@@ -425,9 +432,9 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
     let hasShield = (playerShieldUntil > now);
 
     if (hasShield) {
-        if (isNormalAttack) finalDmg = Math.floor(amount * 0.8); // 20%軽減
-        if (reason === "燃焼" && bossData.dayIndex === 2) finalDmg = Math.floor(amount * 0.5); // 50%軽減
-        if (reason === "電撃" && bossData.dayIndex === 4) finalDmg = Math.floor(amount * 0.7); // 30%軽減
+        if (isNormalAttack) finalDmg = Math.floor(amount * 0.8); 
+        if (reason === "燃焼" && bossData.dayIndex === 2) finalDmg = Math.floor(amount * 0.5); 
+        if (reason === "電撃" && bossData.dayIndex === 4) finalDmg = Math.floor(amount * 0.7); 
     }
 
     bossData.playerCurrentHp -= finalDmg;
@@ -450,17 +457,14 @@ function bossAttackLoop() {
 
     logBattle(`【${bossData.name}の攻撃！】`);
     
-    // 基本攻撃: 1500〜2300のダメージ
     let dmg = 1500 + Math.floor(Math.random() * 801);
     dealDamageToPlayer(dmg, "通常", true);
 
-    // 火曜：攻撃時燃焼付与
     if (bossData.dayIndex === 2) {
         playerDebuffs.burnUntil = Date.now() + 60 * 60 * 1000;
         logBattle("邪地ノ炎魔の攻撃により、プレイヤーに1時間の燃焼が付与された！");
     }
 
-    // 木曜：雷連鎖
     if (bossData.dayIndex === 4 && Math.random() < 0.3) {
         playerDebuffs.shockCount = Math.min(bossData.participants, 3);
         logBattle("【雷連鎖】プレイヤーに電撃が付与され、10秒間行動不能！");
@@ -476,21 +480,19 @@ function bossAttackLoop() {
         }, 10000); 
     }
 
-    // デバフ解除処理
     let dispelChance = 0;
-    if (bossData.dayIndex === 1 || bossData.dayIndex === 4) dispelChance = 0.3; // 中
-    if (bossData.dayIndex === 2 || bossData.dayIndex === 6) dispelChance = 0.1; // 小/低
-    if (bossData.dayIndex === 0) dispelChance = 0.6; // 高
+    if (bossData.dayIndex === 1 || bossData.dayIndex === 4) dispelChance = 0.3; 
+    if (bossData.dayIndex === 2 || bossData.dayIndex === 6) dispelChance = 0.1; 
+    if (bossData.dayIndex === 0) dispelChance = 0.6; 
 
     if (dispelChance > 0 && Math.random() < dispelChance) {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！");
             if(typeof resetAbilities === 'function') resetAbilities();
-            bossData.evasion = 0; // ステラアリアの解除等のためリセット
+            bossData.evasion = 0; 
         }
     }
 
-    // 金曜：凍結
     if (bossData.dayIndex === 5 && !playerFrozen && Math.random() < 0.4) { 
         logBattle("冷気が襲いかかる！プレイヤーは凍結され、30秒間行動不能になった！");
         togglePlayerFreeze(true);
@@ -506,9 +508,6 @@ function bossAttackLoop() {
     checkBossPhase();
 }
 
-// ----------------------------------------
-// プレイヤースキル ＆ ダメージ処理
-// ----------------------------------------
 function switchRelic() {
     if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined) return;
     
@@ -521,10 +520,9 @@ function switchRelic() {
 }
 
 function useSkill(skillType) {
-    if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined) return;
+    if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined || waitingForStart) return;
     if (Date.now() < skillCooldowns[skillType]) return;
 
-    // ★修正: fb から fireball に変更
     if (skillType === 'fireball') {
         let baseDamage = 50; 
         if(typeof window.fbBonusDamage !== 'undefined') baseDamage += window.fbBonusDamage;
@@ -535,7 +533,7 @@ function useSkill(skillType) {
         playerShieldUntil = Date.now() + 15 * 60 * 1000;
         logBattle("【シールド】を展開した！（15分間、ボスの通常攻撃を20%軽減）");
         setSkillCooldown('shield', 1);
-        updateSkillCooldownUI(); // 即座に色を変えるため
+        updateSkillCooldownUI(); 
     } 
     else if (skillType === 'accel') {
         let dmg = bossData.participants * 200;
@@ -551,16 +549,12 @@ function useSkill(skillType) {
     }
 }
 
-// 統合ダメージ関数（ability.jsからも呼ばれる）
 window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
     if (bossData.isDefeated) return 0;
     let amount = baseAmount;
     const hpPercent = bossData.currentHp / bossData.maxHp;
 
-    // --- ボスの無効化・軽減バフ ---
-    // 日曜
     if (bossData.dayIndex === 0) {
-        // ★修正: fireball に統一
         if (hpPercent >= 0.5 && (type === 'fireball' || type === 'accel')) {
             logBattle(`【無効化】日曜ボスの能力により ${skillName} は無効化された！`);
             return 0;
@@ -570,21 +564,18 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
             return 0;
         }
     }
-    // 聖遺物ダメージ軽減
+    
     if (type === 'relic') {
-        if (bossData.dayIndex === 1 || bossData.dayIndex === 2) amount *= 0.7; // 月、火 30%減
-        if (bossData.dayIndex === 6 && hpPercent <= 0.5) amount *= 0.9;        // 土 10%減
+        if (bossData.dayIndex === 1 || bossData.dayIndex === 2) amount *= 0.7; 
+        if (bossData.dayIndex === 6 && hpPercent <= 0.5) amount *= 0.9;        
     }
-    // 火曜：HP50%以下で全てのダメージ5%減
     if (bossData.dayIndex === 2 && hpPercent <= 0.5) {
         amount *= 0.95;
     }
-    // 金曜：シールド(既存) 30%減
     if (bossData.dayIndex === 5 && bossData.shieldActive) {
         amount *= 0.7;
     }
 
-    // 回避率チェック
     if (bossData.evasion > 0 && Math.random() < (bossData.evasion / 100)) {
         logBattle(`攻撃をかわされた！（ボスの回避率: ${bossData.evasion}%）`);
         return 0;
@@ -592,7 +583,6 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
 
     amount = Math.floor(amount);
 
-    // --- 木曜：分身の身代わり処理 ---
     if (!isAoe && bossData.clones && bossData.clones.length > 0) {
         let aliveClones = bossData.clones.filter(c => c.currentHp > 0);
         if (aliveClones.length > 0) {
@@ -604,13 +594,10 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         }
     }
 
-    // --- 日曜：攻撃吸収シールド処理 ---
     if (bossData.dayIndex === 0 && hpPercent <= 0.5) {
-        // ダメージを与える前に、45%分のシールドを「次回以降用」に生成する
         let absorbAmount = Math.floor(amount * 0.45);
         bossData.absorbShields.push({ amount: absorbAmount, expires: Date.now() + 10 * 60 * 1000 });
         
-        // 現在あるシールドでダメージを相殺
         let remainingDamage = amount;
         for (let i = 0; i < bossData.absorbShields.length; i++) {
             let shield = bossData.absorbShields[i];
@@ -633,11 +620,9 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         }
     }
 
-    // --- 本体へダメージ ---
     bossData.currentHp -= amount;
     logBattle(`【${skillName}】 本体に ${amount} のダメージ！`);
     
-    // --- 蘇生チェック ---
     if (bossData.currentHp <= 0 && !bossData.hasRevived) {
         if (bossData.dayIndex === 3) { bossData.currentHp = bossData.maxHp * 0.60; bossData.hasRevived = true; logBattle("【蘇生】突風の鹿鬼がHP60%で復活した！"); }
         else if (bossData.dayIndex === 4) { bossData.currentHp = bossData.maxHp * 0.40; bossData.hasRevived = true; logBattle("【蘇生】砂の蛇王がHP40%で復活した！"); }
@@ -658,21 +643,17 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
 function checkBossPhase() {
     const hpPercent = bossData.currentHp / bossData.maxHp;
 
-    // 月曜：回避率UP
     if (bossData.dayIndex === 1 && hpPercent <= 0.5 && bossData.evasion < 40) {
         bossData.evasion = 40;
         logBattle("【能力発動】潜淵の主の回避率が40%にUP！");
     }
-    // 土曜：回避率UP(デフォ)
     if (bossData.dayIndex === 6 && bossData.evasion < 60) {
         bossData.evasion = 60;
     }
-    // 金曜：シールド展開(既存)
     if (bossData.dayIndex === 5 && hpPercent <= 0.6 && !bossData.shieldActive) {
         bossData.shieldActive = true;
         logBattle("【能力発動】ギルドボスがシールドを展開！（被ダメージ30%カット）");
     }
-    // 金曜：回避率UPループ(既存)
     if (bossData.dayIndex === 5 && hpPercent <= 0.3 && bossData.evasionIntervalId === null) {
         bossData.evasion += 20;
         logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion}%）`);
@@ -716,9 +697,6 @@ async function defeatBoss() {
     }
 }
 
-// =========================================
-// 管理者画面用のボス操作関数
-// =========================================
 function adminReviveBoss() {
     loadBossState();
     bossData.currentHp = bossData.maxHp;

@@ -1,4 +1,3 @@
-// --- 共通ヘルパー：朝5時を境界とした論理日付 ---
 function getLogicalDateString() {
     const now = new Date();
     if (now.getHours() < 5) {
@@ -14,7 +13,6 @@ function getLogicalDay() {
     }
     return now.getDay();
 }
-// ---------------------------------------------
 
 let cart = {}; 
 let playerInventory = {}; 
@@ -99,13 +97,7 @@ async function loadShopItems() {
     const weapons = await weaponRes.json();
     const others = await otherRes.json();
 
-    // ★追加：管理者によって上書きされたカスタム価格をロード
-    let customPrices = JSON.parse(localStorage.getItem('customPrices') || '{}');
-
     const createListItem = (item) => {
-        if (customPrices[item.name]) {
-            item.price = customPrices[item.name];
-        }
         catalog[item.name] = item; 
         
         const li = document.createElement("li");
@@ -114,9 +106,15 @@ async function loadShopItems() {
         const descHtml = item.desc ? item.desc.replace(/\n/g, '<br>') : '';
         const iconHtml = item.icon ? `<i class="item-icon ${item.icon}"></i>` : '';
 
+        // 所持上限がある場合は表示に追加
+        let limitText = "";
+        if (item.maxQty !== undefined) {
+            limitText = ` <small style="color:#ffaa00;">(上限:${item.maxQty}個)</small>`;
+        }
+
         li.innerHTML = `
             <div class="item-main">
-                <span class="item-name">${iconHtml}${item.name}</span>
+                <span class="item-name">${iconHtml}${item.name}${limitText}</span>
                 <span class="item-price">${item.price} G</span>
                 <button onclick="addToCart('${item.name}', ${item.price})" title="カートに入れる"><i class="icon icon-cart"></i></button>
             </div>
@@ -136,17 +134,39 @@ async function loadShopItems() {
 }
 
 function addToCart(name, price) {
-    if (!cart[name]) cart[name] = { price: price, quantity: 1 };
-    else if (cart[name].quantity < 99) cart[name].quantity++;
-    else alert("カートにはこれ以上入らない！");
+    if (!cart[name]) {
+        cart[name] = { price: price, quantity: 0 };
+    }
+    
+    // ★追加：所持制限（上限個数）のチェック
+    let catItem = catalog[name];
+    let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99; // 指定がなければ最大99
+    let currentInv = playerInventory[name] || 0;
+    
+    if (currentInv + cart[name].quantity + 1 > maxLimit) {
+        alert(`これ以上追加できません！ (所持制限: ${maxLimit}個)`);
+        if (cart[name].quantity === 0) delete cart[name];
+        return;
+    }
+    
+    cart[name].quantity++;
     renderCart();
 }
 
 function changeQty(name, amount) {
     if (cart[name]) {
+        let catItem = catalog[name];
+        let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99;
+        let currentInv = playerInventory[name] || 0;
+        
+        // ★追加：所持制限（上限個数）のチェック
+        if (amount > 0 && currentInv + cart[name].quantity + amount > maxLimit) {
+            alert(`これ以上追加できません！ (所持制限: ${maxLimit}個)`);
+            return;
+        }
+        
         cart[name].quantity += amount;
         if (cart[name].quantity <= 0) delete cart[name];
-        else if (cart[name].quantity > 99) cart[name].quantity = 99;
     }
     renderCart();
 }
@@ -258,7 +278,7 @@ function updateGoldLocally(amount) {
 }
 
 // =========================================
-// ★新規追加：管理者画面のロジック
+// 管理者画面のロジック
 // =========================================
 function checkAdmin() {
     const pass = document.getElementById('admin-pass').value;
@@ -296,45 +316,32 @@ function adminSetGold() {
     }
 }
 
-function adminSetShopItem() {
+// ★修正：設定した価格と所持制限をサーバー(DB)へ送信して保存する
+async function adminSetShopItem() {
     const name = document.getElementById('admin-shop-item-select').value;
     const priceStr = document.getElementById('admin-shop-price').value;
     const qtyStr = document.getElementById('admin-shop-qty').value;
 
-    let updated = false;
+    let requestData = { name: name, price: priceStr, maxQty: qtyStr };
 
-    // ショップでの価格変更
-    if (priceStr !== '') {
-        const price = parseInt(priceStr);
-        if (!isNaN(price)) {
-            let customPrices = JSON.parse(localStorage.getItem('customPrices') || '{}');
-            customPrices[name] = price;
-            localStorage.setItem('customPrices', JSON.stringify(customPrices));
-            if (catalog[name]) catalog[name].price = price;
-            updated = true;
-        }
-    }
-
-    // 自分の所持数変更
-    if (qtyStr !== '') {
-        const qty = parseInt(qtyStr);
-        if (!isNaN(qty)) {
-            if (qty <= 0) {
-                delete playerInventory[name];
-            } else {
-                playerInventory[name] = qty;
-            }
-            syncPlayerState();
-            updated = true;
-        }
-    }
-    
-    if (updated) {
-        document.getElementById('admin-shop-price').value = '';
-        document.getElementById('admin-shop-qty').value = '';
-        loadShopItems().then(() => {
-            alert(`${name} の設定を更新しました。`);
+    if (priceStr !== '' || qtyStr !== '') {
+        const response = await fetch('/api/admin/shop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
         });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`${name} の設定をサーバーに保存しました。`);
+            document.getElementById('admin-shop-price').value = '';
+            document.getElementById('admin-shop-qty').value = '';
+            loadShopItems(); // 最新のデータをリロード
+        } else {
+            alert("エラー：保存に失敗しました。");
+        }
+    } else {
+        alert("設定する項目を入力してください。");
     }
 }
 

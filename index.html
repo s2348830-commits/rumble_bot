@@ -80,11 +80,17 @@
         </div>
 
         <div class="admin-section">
-            <h3>ショップ管理 (金額・個数)</h3>
+            <h3>ショップ管理 (金額・所持制限)</h3>
             <select id="admin-shop-item-select" class="bank-input" style="width: 150px;"></select>
             <input type="number" id="admin-shop-price" placeholder="価格" class="bank-input" style="width: 80px;">
-            <input type="number" id="admin-shop-qty" placeholder="所持数" class="bank-input" style="width: 80px;">
-            <button onclick="adminSetShopItem()">設定</button>
+            <input type="number" id="admin-shop-qty" placeholder="所持制限" class="bank-input" style="width: 80px;">
+            <button onclick="adminSetShopItem()">設定保存</button>
+        </div>
+
+        <div class="admin-section">
+            <h3>消費者金融管理</h3>
+            <button onclick="adminResetBankDays()">日数リセット (ペナルティ回避)</button><br><br>
+            <button onclick="adminClearBank()" style="background-color: #8b0000;">借金データ強制クリア</button>
         </div>
 
         <button onclick="returnToMenuFromAdmin()" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
@@ -170,6 +176,11 @@
     </div>
 
     <div id="boss-battle-container" style="display: none; position: relative;">
+        <div id="boss-waiting-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10; justify-content: center; align-items: center; flex-direction: column; border-radius: 8px;">
+            <h2 style="color: #ffcc00; border: none;">10:00 開始予定</h2>
+            <p>参加予約完了！時間になると自動的に戦闘が始まります。</p>
+        </div>
+
         <div class="boss-header-wrapper">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <span style="font-size: 0.9em;">プレイヤーHP</span>
