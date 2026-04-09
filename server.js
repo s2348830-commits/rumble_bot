@@ -12,7 +12,7 @@ const MONGO_URI = "mongodb+srv://nakimusispec_db_user:20060403@cluster0.tueqe88.
 const CLIENT_ID = "1491471551512449255"; 
 const CLIENT_SECRET = "h2HAw_NEwR5TirXfELAsFM_ohg2XR_Ed"; 
 // あなたのRenderのURL（https://〜.onrender.com）に書き換えてください
-const REDIRECT_URI = "https://あなたのアプリ名.onrender.com/api/callback";
+const REDIRECT_URI = "https://rpg-shop-web-abcd.onrender.com/api/callback";
 // ==========================================
 
 app.use(express.json()); 
