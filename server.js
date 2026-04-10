@@ -53,13 +53,13 @@ async function setupDatabase() {
         const db = client.db('rpg_game');
         
         for (let item of defaultItems) {
-            await db.collection('items').updateOne({ name: item.name }, { $setOnInsert: item }, { upsert: true });
+            await db.collection('items').updateOne({ name: item.name }, { $set: item }, { upsert: true });
         }
         for (let w of defaultWeapons) {
-            await db.collection('weapons').updateOne({ name: w.name }, { $setOnInsert: w }, { upsert: true });
+            await db.collection('weapons').updateOne({ name: w.name }, { $set: w }, { upsert: true });
         }
         for (let o of defaultOthers) {
-            await db.collection('others').updateOne({ name: o.name }, { $setOnInsert: o }, { upsert: true });
+            await db.collection('others').updateOne({ name: o.name }, { $set: o }, { upsert: true });
         }
     } catch (err) {
         console.error("DB初期化エラー:", err);
@@ -218,16 +218,22 @@ app.post('/api/sell', async (req, res) => {
 
 app.post('/api/boss_reward', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
+
     try {
         const discordId = req.session.user.discordId;
         const reward = req.body.reward; 
+
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
         const user = await usersCollection.findOne({ discordId: discordId });
 
         if (user) {
             const newGold = user.gold + reward;
-            await usersCollection.updateOne({ discordId: discordId }, { $set: { gold: newGold } });
+            await usersCollection.updateOne(
+                { discordId: discordId },
+                { $set: { gold: newGold } }
+            );
+
             req.session.user.gold = newGold;
             res.json({ success: true, newGold: newGold });
         } else {
@@ -241,15 +247,23 @@ app.post('/api/boss_reward', async (req, res) => {
 
 app.post('/api/update_player', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
+
     try {
         const discordId = req.session.user.discordId;
         const newGold = req.body.gold; 
         const newInventory = req.body.inventory; 
+
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
-        await usersCollection.updateOne({ discordId: discordId }, { $set: { gold: newGold, inventory: newInventory } });
+
+        await usersCollection.updateOne(
+            { discordId: discordId },
+            { $set: { gold: newGold, inventory: newInventory } }
+        );
+
         req.session.user.gold = newGold;
         req.session.user.inventory = newInventory;
+        
         res.json({ success: true });
     } catch (error) { 
         console.error(error);
@@ -290,7 +304,7 @@ app.post('/api/admin/shop', async (req, res) => {
 });
 
 // ==========================================
-// ★修正：共有状態（ログとバフ）を追加
+// ★ボスおよび全体共有ステータス管理
 // ==========================================
 let globalBossState = {
     dateStr: "", dayIndex: 5, bossHp: 1020000, bossMaxHp: 1020000, 
@@ -298,7 +312,7 @@ let globalBossState = {
     unlockedDaysData: {},
     logs: [],
     buffs: {
-        sunchaliceUntil: 0, fbBonusDamage: 0, crescentPercent: 5.0,
+        sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
         playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
     }
 };
@@ -365,24 +379,21 @@ app.post('/api/boss/action', async (req, res) => {
             globalBossState.playerHp += 1000000;
         } else if (type === 'set_state') {
             globalBossState = { ...globalBossState, ...data }; 
-            // 日を跨いでリセットされる場合などにバフ・ログもクリアする
             if (data.resetBuffs) {
                 globalBossState.logs = [];
                 globalBossState.buffs = {
-                    sunchaliceUntil: 0, fbBonusDamage: 0, crescentPercent: 5.0,
+                    sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
                     playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
                 };
             }
         } else if (type === 'unlock_days') {
             globalBossState.unlockedDaysData = data;
         } else if (type === 'add_log') {
-            // ★新規：ログの追加
             if (data && data.message) {
                 globalBossState.logs.push(data.message);
-                if (globalBossState.logs.length > 50) globalBossState.logs.shift(); // 50件まで保持
+                if (globalBossState.logs.length > 50) globalBossState.logs.shift(); 
             }
         } else if (type === 'apply_buff') {
-            // ★新規：バフの適用
             globalBossState.buffs = { ...globalBossState.buffs, ...data };
         }
         
