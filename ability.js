@@ -89,7 +89,6 @@ function executeRelicAbility(relicName, pName = "誰か") {
     }
 }
 
-// デバフとしての燃焼処理
 function startBurn(damage, intervalMs, durationMs) {
     const burnTimer = setInterval(() => {
         if (bossData.isDefeated) {
@@ -134,20 +133,32 @@ function renderMainInventory() {
         if (qty <= 0) continue;
         let itemData = catalog[name] || { desc: "" }; 
         let descHtml = itemData.desc ? itemData.desc.replace(/\n/g, '<br>') : '';
-        const iconHtml = itemData.icon ? `<i class="item-icon ${itemData.icon}"></i>` : '';
+        
+        // ★修正：特別アイテム用の画像アイコン判定
+        let iconHtml = '';
+        if (typeof specialItemIcons !== 'undefined' && specialItemIcons[name]) {
+            iconHtml = `<i class="${specialItemIcons[name]}" style="margin-right: 10px; vertical-align: middle;"></i>`;
+        } else if (itemData.icon) {
+            iconHtml = `<i class="item-icon ${itemData.icon}"></i>`;
+        }
+
         if (name === "貯金猫") {
             descHtml = `1%の確率で貯金が全額手に入る。<br><br><span style="color:#4CAF50; font-weight:bold;">【現在の貯金状況】</span><br>総額: ${pool} G<br>挑戦人数: ${challengers} 人`;
         }
+        
         const li = document.createElement("li");
         li.className = "shop-item";
         let useBtnHtml = "";
+        
         if (name === "博打猫" || name === "貯金猫") {
             useBtnHtml = `<button class="use-item-btn" onclick="useCatItem('${name}')">使う</button>`;
         } else if (relicsData.some(r => r.name === name)) {
             useBtnHtml = `<span style="font-size:0.8em; color:#aaa;">(戦闘中のみ使用可能)</span>`;
+        } else if (typeof specialItemIcons !== 'undefined' && specialItemIcons[name]) {
+            // 特別アイテムは使用不可（市場で売却）であることを表示
+            useBtnHtml = `<span style="font-size:0.8em; color:#ffcc00;">(特別市場で売却可能)</span>`;
         }
         
-        // ★追加：ギフトボタン
         let giftBtnHtml = `<button class="use-item-btn" style="background-color: #9c27b0; margin-left: 5px; padding: 5px 10px; font-size: 0.9em;" onclick="openGiftPrompt('${name}', ${qty})">🎁 ギフト</button>`;
 
         li.innerHTML = `
@@ -164,7 +175,6 @@ function renderMainInventory() {
     }
 }
 
-// ★追加：ギフト用プロンプトと送信処理
 function openGiftPrompt(itemName, maxQty) {
     const targetName = prompt(`【${itemName}】を誰に送りますか？\n相手のプレイヤー名を入力してください:`);
     if (!targetName) return;
