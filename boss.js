@@ -75,7 +75,6 @@ async function sendBossAction(type, amount, data = null) {
                 bossData.hasRevived = true;
             }
 
-            // ★ 全体のログを同期
             if (res.state.logs) {
                 const logBox = document.getElementById('battle-log');
                 const isBottom = logBox.scrollHeight - logBox.clientHeight <= logBox.scrollTop + 5;
@@ -89,11 +88,14 @@ async function sendBossAction(type, amount, data = null) {
                 if (isBottom) logBox.scrollTop = logBox.scrollHeight;
             }
 
-            // ★ 全体のバフ（聖遺物の効果）を同期
+            // ★バフの有効時間をチェックして適用
             if (res.state.buffs) {
                 const now = Date.now();
-                window.sunchaliceActive = res.state.buffs.sunchaliceUntil > now;
+                // 15分過ぎていればfalse
+                window.sunchaliceActive = (res.state.buffs.sunchaliceUntil > now);
+                // 20分過ぎていれば0ボーナス
                 window.fbBonusDamage = (res.state.buffs.bloodyUntil > now) ? res.state.buffs.fbBonusDamage : 0;
+                
                 window.crescentPercent = res.state.buffs.crescentPercent;
                 playerShieldUntil = res.state.buffs.playerShieldUntil;
                 bossData.evasion = res.state.buffs.bossEvasion || 0;
@@ -142,7 +144,7 @@ async function initBossState(dayIndex = 5) {
         participants: 0,
         isDefeated: false,
         hasRevived: false,
-        resetBuffs: true // 新しい日にリセット
+        resetBuffs: true 
     };
     await sendBossAction('set_state', 0, doc);
 }
@@ -252,7 +254,7 @@ function joinBoss() {
     document.getElementById('join-boss-overlay').style.display = 'none';
     
     const pName = document.getElementById("player-name").innerText;
-    logBattle(`${pName} が戦闘に参加した！`, false); // ★全員に通知
+    logBattle(`${pName} が戦闘に参加した！`, false);
     
     sendBossAction('join', 0); 
     
@@ -307,7 +309,6 @@ function returnToMenuFromBattle() {
     document.getElementById('main-menu').style.display = 'block';
 }
 
-// ★修正：ログの全体送信対応 (isLocalOnlyで自分だけの表示かを分ける)
 function logBattle(message, isLocalOnly = false) {
     if (isLocalOnly) {
         const logBox = document.getElementById('battle-log');
@@ -509,7 +510,7 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
 
     sendBossAction('damage_player', finalDmg, { isNormalAttack: isNormalAttack });
     if (isNormalAttack) {
-        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true); // 多重送信を防ぐためローカルのみ
+        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true); 
     }
 }
 
@@ -549,7 +550,7 @@ function bossAttackLoop() {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
             if(typeof resetAbilities === 'function') resetAbilities();
-            sendBossAction('apply_buff', 0, { bossEvasion: 0 }); // 共有回避率もリセット
+            sendBossAction('apply_buff', 0, { bossEvasion: 0 }); 
         }
     }
 
@@ -583,7 +584,6 @@ function useSkill(skillType) {
     if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined || waitingForStart) return;
     if (Date.now() < skillCooldowns[skillType]) return;
 
-    // ★ スキル名と使用者を取得
     const pName = document.getElementById("player-name").innerText;
 
     if (skillType === 'fireball') {
@@ -594,7 +594,7 @@ function useSkill(skillType) {
     } 
     else if (skillType === 'shield') {
         playerShieldUntil = Date.now() + 15 * 60 * 1000;
-        sendBossAction('apply_buff', 0, { playerShieldUntil: playerShieldUntil }); // 全体共有
+        sendBossAction('apply_buff', 0, { playerShieldUntil: playerShieldUntil }); 
         logBattle(`【${pName}のシールド！】展開した！（15分間、ボスの通常攻撃を20%軽減）`, false);
         setSkillCooldown('shield', 1);
         updateSkillCooldownUI(); 
@@ -685,7 +685,7 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName, pName = "
     }
 
     sendBossAction('damage_boss', amount);
-    logBattle(`【${pName}の${skillName}！】 本体に ${amount} のダメージ！`, false); // 全体送信
+    logBattle(`【${pName}の${skillName}！】 本体に ${amount} のダメージ！`, false); 
     
     return amount;
 };
@@ -717,7 +717,7 @@ function checkBossPhase() {
                 sendBossAction('apply_buff', 0, { bossEvasion: nextEvasion });
                 logBattle(`【バフ】ボスの回避率が再びアップ！（現在: ${nextEvasion}% / 上限20%）`, true);
             }
-        }, 600000);
+        }, 600000); 
     }
 }
 

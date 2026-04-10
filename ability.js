@@ -26,7 +26,7 @@ function resetAbilities() {
     // 全体のバフ状態をリセット
     if (typeof sendBossAction === 'function') {
         sendBossAction('apply_buff', 0, {
-            sunchaliceUntil: 0, fbBonusDamage: 0, crescentPercent: 5.0, bossEvasion: 0
+            sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0, bossEvasion: 0
         });
     }
 }
@@ -71,7 +71,7 @@ function executeRelicAbility(relicName, pName = "誰か") {
             }
             break;
         case "サンチャリス":
-            // 全体にクールタイム短縮効果（10時間として実質無期限）
+            // ★15分間 (15 * 60 * 1000) クールタイム短縮
             sendBossAction('apply_buff', 0, { sunchaliceUntil: Date.now() + 15 * 60 * 1000 }); 
             logBattle(`【効果】${pName}により、クールタイム短縮効果が発動した！(全プレイヤーの全スキルのCT30%短縮、15分間有効)`, false);
             break;
@@ -80,6 +80,7 @@ function executeRelicAbility(relicName, pName = "誰か") {
             startBurn(30, 10000, 600000); 
             break;
         case "ブラッディ":
+            // ★20分間 (20 * 60 * 1000) FBダメージ増加
             let newBonus = (window.fbBonusDamage || 0) + 100;
             sendBossAction('apply_buff', 0, { fbBonusDamage: newBonus, bloodyUntil: Date.now() + 20 * 60 * 1000 });
             logBattle(`【効果】${pName}により、全プレイヤーのファイヤーボールの威力が上昇した！（追加ダメージ: +${newBonus}、20分間有効）`, false);
@@ -108,7 +109,6 @@ function startBurn(damage, intervalMs, durationMs) {
             clearInterval(burnTimer);
             return;
         }
-        // 燃焼ダメージはサーバーへ直接送信して全体で削る
         if (typeof sendBossAction === 'function') {
             sendBossAction('damage_boss', damage);
             logBattle(`【燃焼】ボスに ${damage} のダメージ！`, false);
