@@ -46,7 +46,7 @@ let currentRelicIndex = 0;
 // 10時開始用の待機フラグ
 let waitIntervalId = null;
 let waitingForStart = false;
-let bossSyncInterval = null; // 全体共有用同期ループ
+let bossSyncInterval = null; 
 
 // =========================================
 // DBと同期する通信関数群
@@ -204,6 +204,13 @@ async function startBoss(dayIndex) {
     } 
     else if (hasJoined) {
         document.getElementById('join-boss-overlay').style.display = 'none';
+        
+        // ★修正：既に参加済みならすぐポーリング（同期）開始
+        if(!bossSyncInterval) {
+            bossSyncInterval = setInterval(() => {
+                sendBossAction('poll', 0);
+            }, 2000);
+        }
         checkAndStartBattle();
     } 
     else {
@@ -229,7 +236,15 @@ function joinBoss() {
     const pName = document.getElementById("player-name").innerText;
     logBattle(`${pName} が戦闘に参加した！`, true);
     
-    sendBossAction('join', 0); // サーバーに参加人数とHP増加を通知
+    sendBossAction('join', 0); 
+    
+    // ★修正：参加した瞬間にポーリング（同期）開始
+    if(!bossSyncInterval) {
+        bossSyncInterval = setInterval(() => {
+            sendBossAction('poll', 0);
+        }, 2000);
+    }
+    
     checkAndStartBattle();
 }
 
@@ -262,17 +277,13 @@ function startBattleTimers() {
     document.getElementById('battle-actions-container').style.pointerEvents = 'auto';
     document.getElementById('battle-actions-container').style.opacity = '1';
 
-    clearTimers();
+    if (bossAttackIntervalId) clearInterval(bossAttackIntervalId);
+    if (bossPassiveIntervalId) clearInterval(bossPassiveIntervalId);
+    if (uiUpdateIntervalId) clearInterval(uiUpdateIntervalId);
+    
     bossAttackIntervalId = setInterval(bossAttackLoop, 10000);
     bossPassiveIntervalId = setInterval(bossPassiveLoop, 1000);
     uiUpdateIntervalId = setInterval(updateSkillCooldownUI, 200);
-    
-    // 全プレイヤーで状態を同期するための定期ポーリング (2秒ごと)
-    if(!bossSyncInterval) {
-        bossSyncInterval = setInterval(() => {
-            sendBossAction('poll', 0);
-        }, 2000);
-    }
 }
 
 function returnToMenuFromBattle() {
@@ -344,7 +355,6 @@ function updateSkillCooldownUI() {
 
     if (!hasJoined || waitingForStart || bossData.isDefeated || bossData.playerCurrentHp <= 0) return;
     
-    // ★追加：凍結中はリターン(切り替え)以外を無効化
     if (playerFrozen) {
         ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
             let btn = document.querySelector(`.btn-${skill}`);
@@ -381,7 +391,6 @@ function disableActions() {
     document.querySelectorAll('.skill-btn').forEach(btn => btn.disabled = true);
 }
 
-// ★修正：凍結中であっても btn-return（切り替えボタン）は押せるようにする
 function togglePlayerFreeze(isFrozen) {
     playerFrozen = isFrozen;
     const btns = document.querySelectorAll('.skill-btn');
@@ -477,7 +486,8 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
         if (reason === "電撃" && bossData.dayIndex === 4) finalDmg = Math.floor(amount * 0.7); 
     }
 
-    sendBossAction('damage_player', finalDmg);
+    // ★修正：通常攻撃判定をサーバーに送る
+    sendBossAction('damage_player', finalDmg, { isNormalAttack: isNormalAttack });
     if (isNormalAttack) {
         logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true);
     }
@@ -737,7 +747,6 @@ function adminSetPlayerHp() {
     }
 }
 
-// ★修正：チェックを入れていないボスはロック（空配列の送信）になるよう変更
 function adminUnlockSelectedBosses() {
     const checkboxes = document.querySelectorAll('input[name="unlock-boss-day"]:checked');
     const selectedDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
@@ -745,7 +754,7 @@ function adminUnlockSelectedBosses() {
     if (typeof getLogicalDateString === 'function') {
         const unlockData = {
             date: getLogicalDateString(),
-            days: selectedDays // チェックがない場合は空配列 [] が渡される
+            days: selectedDays 
         };
         sendBossAction('unlock_days', 0, unlockData).then(() => {
             alert("選択したボスの解放状態をサーバーに保存しました。\n（チェックしていないボスは挑戦不可になります）");

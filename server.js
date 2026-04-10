@@ -257,7 +257,6 @@ app.post('/api/update_player', async (req, res) => {
     }
 });
 
-// 管理者：ショップ設定をDBに保存
 app.post('/api/admin/shop', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
     try {
@@ -291,14 +290,27 @@ app.post('/api/admin/shop', async (req, res) => {
 });
 
 // ==========================================
-// ★新規追加：全プレイヤーで共有するボス・全体ステータスAPI
+// ★修正：グローバル状態をメモリで管理して競合と多重実行を防ぐ
 // ==========================================
+let globalBossState = {
+    dateStr: "", dayIndex: 5, bossHp: 1020000, bossMaxHp: 1020000, 
+    playerHp: 0, playerMaxHp: 0, participants: 0, isDefeated: false, hasRevived: false,
+    unlockedDaysData: {} 
+};
+let isGlobalStateLoaded = false;
+let lastBossHealTime = 0;
+let lastBossAttackTime = 0;
+
 app.get('/api/global_state', async (req, res) => {
     try {
         await client.connect();
         const db = client.db('rpg_game');
-        let state = await db.collection('global').findOne({ _id: 'boss_state' });
-        res.json({ success: true, state: state || {} });
+        if (!isGlobalStateLoaded) {
+            const savedState = await db.collection('global').findOne({ _id: 'boss_state' });
+            if (savedState) globalBossState = { ...globalBossState, ...savedState };
+            isGlobalStateLoaded = true;
+        }
+        res.json({ success: true, state: globalBossState });
     } catch (error) {
         res.status(500).json({ success: false });
     }
@@ -308,38 +320,57 @@ app.post('/api/boss/action', async (req, res) => {
     try {
         await client.connect();
         const db = client.db('rpg_game');
-        const { type, amount, data } = req.body;
         
-        let doc = await db.collection('global').findOne({ _id: 'boss_state' });
-        if (!doc) doc = { bossHp: 1020000, bossMaxHp: 1020000, playerHp: 0, playerMaxHp: 0, participants: 0, unlockedDaysData: {} };
+        if (!isGlobalStateLoaded) {
+            const savedState = await db.collection('global').findOne({ _id: 'boss_state' });
+            if (savedState) globalBossState = { ...globalBossState, ...savedState };
+            isGlobalStateLoaded = true;
+        }
 
+        const { type, amount, data } = req.body;
+        const now = Date.now();
+        
         if (type === 'damage_boss') {
-            doc.bossHp = Math.max(0, doc.bossHp - amount);
-            if (doc.bossHp === 0 && !doc.hasRevived) {
-                if (doc.dayIndex === 3) { doc.bossHp = doc.bossMaxHp * 0.60; doc.hasRevived = true; }
-                else if (doc.dayIndex === 4) { doc.bossHp = doc.bossMaxHp * 0.40; doc.hasRevived = true; }
-                else if (doc.dayIndex === 0) { doc.bossHp = doc.bossMaxHp * 0.10; doc.hasRevived = true; }
-                else { doc.isDefeated = true; }
-            } else if (doc.bossHp === 0) {
-                doc.isDefeated = true;
+            globalBossState.bossHp = Math.max(0, globalBossState.bossHp - amount);
+            if (globalBossState.bossHp === 0 && !globalBossState.hasRevived) {
+                if (globalBossState.dayIndex === 3) { globalBossState.bossHp = globalBossState.bossMaxHp * 0.60; globalBossState.hasRevived = true; }
+                else if (globalBossState.dayIndex === 4) { globalBossState.bossHp = globalBossState.bossMaxHp * 0.40; globalBossState.hasRevived = true; }
+                else if (globalBossState.dayIndex === 0) { globalBossState.bossHp = globalBossState.bossMaxHp * 0.10; globalBossState.hasRevived = true; }
+                else { globalBossState.isDefeated = true; }
+            } else if (globalBossState.bossHp === 0) {
+                globalBossState.isDefeated = true;
             }
         } else if (type === 'damage_player') {
-            doc.playerHp = Math.max(0, doc.playerHp - amount);
+            if (data && data.isNormalAttack) {
+                // 通常攻撃は10秒(9秒マージン)に1回しか通さない（多重攻撃防止）
+                if (now - lastBossAttackTime > 9000) {
+                    globalBossState.playerHp = Math.max(0, globalBossState.playerHp - amount);
+                    lastBossAttackTime = now;
+                }
+            } else {
+                // 燃焼や電撃は個人のデバフなのでそのまま通す
+                globalBossState.playerHp = Math.max(0, globalBossState.playerHp - amount);
+            }
         } else if (type === 'heal_boss') {
-            doc.bossHp = Math.min(doc.bossMaxHp || 1020000, doc.bossHp + amount);
+            // 自己再生は1秒(900msマージン)に1回しか通さない（多重回復防止）
+            if (now - lastBossHealTime > 900) {
+                globalBossState.bossHp = Math.min(globalBossState.bossMaxHp || 1020000, globalBossState.bossHp + amount);
+                lastBossHealTime = now;
+            }
         } else if (type === 'join') {
-            doc.participants = (doc.participants || 0) + 1;
-            doc.playerMaxHp = (doc.playerMaxHp || 0) + 1000000;
-            doc.playerHp = (doc.playerHp || 0) + 1000000;
+            globalBossState.participants += 1;
+            globalBossState.playerMaxHp += 1000000;
+            globalBossState.playerHp += 1000000;
         } else if (type === 'set_state') {
-            doc = { ...doc, ...data }; 
+            globalBossState = { ...globalBossState, ...data }; 
         } else if (type === 'unlock_days') {
-            doc.unlockedDaysData = data;
+            globalBossState.unlockedDaysData = data;
         } 
-        // type === 'poll' の場合は何も変更せずに返す
-
-        await db.collection('global').updateOne({ _id: 'boss_state' }, { $set: doc }, { upsert: true });
-        res.json({ success: true, state: doc });
+        
+        // 非同期でDBへ保存
+        db.collection('global').updateOne({ _id: 'boss_state' }, { $set: globalBossState }, { upsert: true }).catch(console.error);
+        
+        res.json({ success: true, state: globalBossState });
     } catch (error) {
         res.status(500).json({ success: false });
     }
