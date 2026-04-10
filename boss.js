@@ -750,9 +750,18 @@ async function defeatBoss() {
             document.getElementById('player-gold').innerText = result.newGold;
             logBattle(`報酬受け取り完了！現在の所持金: ${result.newGold} G`, true);
         } else {
-            logBattle("エラー：報酬の受け取りに失敗しました。", true);
+            // ★修正：セッション切れエラー時は未受け取り報酬としてローカルに一時保存
+            logBattle("【警告】セッション切れにより報酬が受け取れませんでした。", true);
+            let pending = parseInt(localStorage.getItem('pendingReward') || '0');
+            localStorage.setItem('pendingReward', pending + bossData.reward);
+            alert("ログインの有効期限が切れてしまったため、報酬を一時保留しました。\nページを更新（リロード）して再ログインすると自動的に付与されます！");
         }
-    } catch(e) {}
+    } catch(e) {
+        logBattle("通信エラーにより報酬が受け取れませんでした。", true);
+        let pending = parseInt(localStorage.getItem('pendingReward') || '0');
+        localStorage.setItem('pendingReward', pending + bossData.reward);
+        alert("通信エラーが発生し、報酬を一時保留しました。\nページを更新（リロード）して再ログインすると自動的に付与されます！");
+    }
 }
 
 function adminReviveBoss() {

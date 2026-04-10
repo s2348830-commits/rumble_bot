@@ -38,6 +38,26 @@ async function init() {
         if (typeof checkBankPenalties === 'function') {
             checkBankPenalties();
         }
+
+        let pending = parseInt(localStorage.getItem('pendingReward') || '0');
+        if (pending > 0) {
+            try {
+                const r = await fetch('/api/boss_reward', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reward: pending })
+                });
+                const res = await r.json();
+                if (res.success) {
+                    alert(`【未受け取り報酬】\n前回受け取れなかったボス討伐報酬 ${pending} G を無事に獲得しました！`);
+                    document.getElementById("player-gold").innerText = res.newGold;
+                    localStorage.removeItem('pendingReward'); // 受け取ったらリセット
+                }
+            } catch(e) {
+                console.error("未受け取り報酬の付与に失敗しました");
+            }
+        }
+
     } else {
         document.getElementById("login-container").style.display = "block";
     }
