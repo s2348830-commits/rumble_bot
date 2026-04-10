@@ -72,8 +72,8 @@ function executeRelicAbility(relicName, pName = "誰か") {
             break;
         case "サンチャリス":
             // 全体にクールタイム短縮効果（10時間として実質無期限）
-            sendBossAction('apply_buff', 0, { sunchaliceUntil: Date.now() + 10 * 60 * 60 * 1000 }); 
-            logBattle(`【効果】${pName}により、クールタイム短縮効果が発動した！(全プレイヤーの全スキルのCT30%短縮)`, false);
+            sendBossAction('apply_buff', 0, { sunchaliceUntil: Date.now() + 15 * 60 * 1000 }); 
+            logBattle(`【効果】${pName}により、クールタイム短縮効果が発動した！(全プレイヤーの全スキルのCT30%短縮、15分間有効)`, false);
             break;
         case "フェイトスピア":
             logBattle(`【効果】${pName}が全体に燃焼を付与した！（10分間、30ダメージ/10秒）`, false);
@@ -81,8 +81,8 @@ function executeRelicAbility(relicName, pName = "誰か") {
             break;
         case "ブラッディ":
             let newBonus = (window.fbBonusDamage || 0) + 100;
-            sendBossAction('apply_buff', 0, { fbBonusDamage: newBonus });
-            logBattle(`【効果】${pName}により、全プレイヤーのファイヤーボールの威力が上昇した！（追加ダメージ: +${newBonus}）`, false);
+            sendBossAction('apply_buff', 0, { fbBonusDamage: newBonus, bloodyUntil: Date.now() + 20 * 60 * 1000 });
+            logBattle(`【効果】${pName}により、全プレイヤーのファイヤーボールの威力が上昇した！（追加ダメージ: +${newBonus}、20分間有効）`, false);
             break;
         case "ステラアリア":
             sendBossAction('apply_buff', 0, { bossEvasion: 0 });

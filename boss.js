@@ -93,7 +93,7 @@ async function sendBossAction(type, amount, data = null) {
             if (res.state.buffs) {
                 const now = Date.now();
                 window.sunchaliceActive = res.state.buffs.sunchaliceUntil > now;
-                window.fbBonusDamage = res.state.buffs.fbBonusDamage;
+                window.fbBonusDamage = (res.state.buffs.bloodyUntil > now) ? res.state.buffs.fbBonusDamage : 0;
                 window.crescentPercent = res.state.buffs.crescentPercent;
                 playerShieldUntil = res.state.buffs.playerShieldUntil;
                 bossData.evasion = res.state.buffs.bossEvasion || 0;
