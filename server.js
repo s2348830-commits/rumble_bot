@@ -314,7 +314,7 @@ let globalBossState = {
     buffs: {
         sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
         playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
-        iceFrozenUntil: 0, fogActiveUntil: 0 // ★新規追加：氷と霧の共有ステータス
+        iceFrozenUntil: 0, fogActiveUntil: 0
     }
 };
 let isGlobalStateLoaded = false;
@@ -385,7 +385,7 @@ app.post('/api/boss/action', async (req, res) => {
                 globalBossState.buffs = {
                     sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
                     playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
-                    iceFrozenUntil: 0, fogActiveUntil: 0 // ★リセット処理にも追加
+                    iceFrozenUntil: 0, fogActiveUntil: 0 
                 };
             }
         } else if (type === 'unlock_days') {
@@ -404,6 +404,163 @@ app.post('/api/boss/action', async (req, res) => {
         res.json({ success: true, state: globalBossState });
     } catch (error) {
         res.status(500).json({ success: false });
+    }
+});
+
+// ==========================================
+// ★新規追加：特別市場（投資）のDBと価格変動ロジック
+// ==========================================
+
+// JSTでの論理日付（朝5時切り替え）を取得する関数
+function getJSTLogicalDate() {
+    const now = new Date();
+    const jstTime = now.getTime() + (9 * 60 * 60 * 1000); 
+    const jstDate = new Date(jstTime);
+    if (jstDate.getUTCHours() < 5) {
+        jstDate.setUTCDate(jstDate.getUTCDate() - 1);
+    }
+    return `${jstDate.getUTCFullYear()}-${String(jstDate.getUTCMonth()+1).padStart(2, '0')}-${String(jstDate.getUTCDate()).padStart(2, '0')}`;
+}
+
+const marketItemsDef = [
+    { id: "m1", name: "古代の金貨", basePrice: 500, imgIndex: 1, posIndex: 1 },
+    { id: "m2", name: "エルフの秘薬", basePrice: 1000, imgIndex: 1, posIndex: 2 },
+    { id: "m3", name: "ドワーフの鉄", basePrice: 1500, imgIndex: 1, posIndex: 3 },
+    { id: "m4", name: "魔力結晶", basePrice: 2000, imgIndex: 1, posIndex: 4 },
+    { id: "m5", name: "星屑の砂", basePrice: 3000, imgIndex: 1, posIndex: 5 },
+    { id: "m6", name: "竜の牙", basePrice: 5000, imgIndex: 1, posIndex: 6 },
+    { id: "m7", name: "不死鳥の羽", basePrice: 7500, imgIndex: 2, posIndex: 1 },
+    { id: "m8", name: "マーメイドの涙", basePrice: 10000, imgIndex: 2, posIndex: 2 },
+    { id: "m9", name: "ゴーレムの心臓", basePrice: 12000, imgIndex: 2, posIndex: 3 },
+    { id: "m10", name: "精霊の銀", basePrice: 15000, imgIndex: 2, posIndex: 4 },
+    { id: "m11", name: "暗黒物質", basePrice: 20000, imgIndex: 2, posIndex: 5 },
+    { id: "m12", name: "女神の涙", basePrice: 30000, imgIndex: 2, posIndex: 6 }
+];
+
+// 市場の1日の変動をシミュレートする（平均回帰＋トレンド）
+function simulateMarketDay(itemState, def) {
+    const minPrice = Math.max(10, Math.floor(def.basePrice * 0.3));
+    const maxPrice = Math.floor(def.basePrice * 3.0);
+    
+    let currentPrice = itemState.history[itemState.history.length - 1].close;
+
+    // トレンドの更新
+    if (!itemState.trend || itemState.trendDays <= 0) {
+        itemState.trend = (Math.random() > 0.5 ? 1 : -1);
+        itemState.trendDays = Math.floor(Math.random() * 3) + 1; // 1〜3日持続
+    }
+
+    // 平均回帰ロジック（上限・下限に近づくと逆の力が働く）
+    if (currentPrice > maxPrice * 0.8) itemState.trend = -1;
+    else if (currentPrice < minPrice * 1.2) itemState.trend = 1;
+
+    itemState.trendDays--;
+
+    // ボラティリティ（変動幅）の計算
+    const volatility = currentPrice * 0.05; // 基準は5%
+    const trendMove = itemState.trend * volatility * (Math.random() * 0.5 + 0.5);
+    const randomMove = (Math.random() - 0.5) * volatility;
+
+    let newClose = Math.floor(currentPrice + trendMove + randomMove);
+    newClose = Math.max(minPrice, Math.min(maxPrice, newClose)); // 異常値ブロック
+
+    let open = currentPrice;
+    let close = newClose;
+
+    // ヒゲ（高値・安値）の計算
+    let high = Math.floor(Math.max(open, close) + Math.random() * volatility);
+    let low = Math.floor(Math.min(open, close) - Math.random() * volatility);
+
+    // 履歴に追加（最大30日保存）
+    itemState.history.push({ open, high, low, close });
+    if (itemState.history.length > 30) itemState.history.shift();
+}
+
+app.get('/api/market', async (req, res) => {
+    try {
+        await client.connect();
+        const db = client.db('rpg_game');
+        let state = await db.collection('global').findOne({ _id: 'market_state' });
+        const todayStr = getJSTLogicalDate();
+
+        if (!state) {
+            // 初期化
+            state = { _id: 'market_state', date: todayStr, items: {} };
+            for (let def of marketItemsDef) {
+                state.items[def.id] = {
+                    name: def.name,
+                    imgIndex: def.imgIndex,
+                    posIndex: def.posIndex,
+                    trend: 1,
+                    trendDays: 2,
+                    history: [{ open: def.basePrice, high: def.basePrice*1.05, low: def.basePrice*0.95, close: def.basePrice }]
+                };
+                // 初期の30日分を生成
+                for (let i = 0; i < 29; i++) {
+                    simulateMarketDay(state.items[def.id], def);
+                }
+            }
+            await db.collection('global').insertOne(state);
+        } else if (state.date !== todayStr) {
+            // 日付が変わっていれば差分をシミュレート
+            const oldDate = new Date(state.date);
+            const newDate = new Date(todayStr);
+            let diffDays = Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+                if (diffDays > 30) diffDays = 30; // 上限
+                for (let i = 0; i < diffDays; i++) {
+                    for (let def of marketItemsDef) {
+                        simulateMarketDay(state.items[def.id], def);
+                    }
+                }
+                state.date = todayStr;
+                await db.collection('global').updateOne({ _id: 'market_state' }, { $set: state });
+            }
+        }
+        res.json({ success: true, state: state });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false });
+    }
+});
+
+// 市場アイテムの売買
+app.post('/api/market/trade', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false, message: "ログインしていません！" });
+
+    try {
+        const { action, itemId, itemName, price } = req.body;
+        const discordId = req.session.user.discordId;
+
+        await client.connect();
+        const usersCollection = client.db('rpg_game').collection('users');
+        const user = await usersCollection.findOne({ discordId: discordId });
+        let inventory = user.inventory || {};
+        let currentQty = inventory[itemName] || 0;
+
+        if (action === 'buy') {
+            if (currentQty >= 99) return res.json({ success: false, message: "これ以上所持できません（上限99個）" });
+            if (user.gold < price) return res.json({ success: false, message: "お金が足りないようだ..." });
+            
+            user.gold -= price;
+            inventory[itemName] = currentQty + 1;
+            
+        } else if (action === 'sell') {
+            if (currentQty <= 0) return res.json({ success: false, message: "そのアイテムは持っていない！" });
+            
+            user.gold += price;
+            inventory[itemName] = currentQty - 1;
+            if (inventory[itemName] <= 0) delete inventory[itemName];
+        }
+
+        await usersCollection.updateOne({ discordId: discordId }, { $set: { gold: user.gold, inventory: inventory } });
+        req.session.user.gold = user.gold;
+        req.session.user.inventory = inventory;
+
+        res.json({ success: true, message: action === 'buy' ? "購入しました！" : "売却しました！", newGold: user.gold, newInventory: inventory });
+
+    } catch (e) {
+        res.status(500).json({ success: false, message: "DBエラー" });
     }
 });
 

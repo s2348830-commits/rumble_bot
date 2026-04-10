@@ -370,7 +370,6 @@ button:hover { background-color: #666; }
 .attack-ui-container {
     position: relative;
     width: 350px;
-    /* ★修正：アーチ状の配置に合わせ、上に少しスペースを確保 */
     height: 280px; 
     margin: 20px auto;
 }
@@ -382,14 +381,12 @@ button:hover { background-color: #666; }
     position: absolute;
 }
 
-/* ★修正：画像を元に、ファイヤーボールを円状に囲うレイアウトに再配置 */
-.fireball-wrapper { bottom: 10px; left: 150px; } /* 右下に大きく配置 */
-.accel-wrapper    { bottom: 10px; left: 60px; }  /* FBの左下 */
-.shield-wrapper   { bottom: 85px; left: 40px; }  /* FBの左中央 */
-.ice-wrapper      { bottom: 160px; left: 75px; } /* FBの左上 */
-.fog-wrapper      { bottom: 200px; left: 145px; } /* FBの真上 */
+.fireball-wrapper { bottom: 10px; left: 150px; } 
+.accel-wrapper    { bottom: 10px; left: 60px; }  
+.shield-wrapper   { bottom: 85px; left: 40px; }  
+.ice-wrapper      { bottom: 160px; left: 75px; } 
+.fog-wrapper      { bottom: 200px; left: 145px; } 
 
-/* 聖遺物ボタンは右側の邪魔にならない場所に配置 */
 .relic-wrapper    { bottom: 130px; left: 260px; } 
 
 .skill-btn {
@@ -406,13 +403,11 @@ button:hover { background-color: #666; }
 
 .skill-btn:active { transform: scale(0.95); }
 
-/* クールタイム中などの使用不可状態の表示 */
 .skill-btn:disabled {
     filter: grayscale(100%) brightness(30%) sepia(100%) hue-rotate(180deg) drop-shadow(0 4px 6px rgba(0,0,0,0.5));
     cursor: not-allowed;
 }
 
-/* 新しいスプライトの座標指定 */
 .btn-fireball { width: 100px; height: 100px; background-position: 0% 0%; }
 .btn-shield   { width: 55px; height: 55px; background-position: 50% 0%; }
 .btn-accel    { width: 55px; height: 55px; background-position: 100% 0%; }
@@ -426,7 +421,6 @@ button:hover { background-color: #666; }
     background-size: 300% 300%;
 }
 
-/* 切り替えボタンも新しい画像に対応 */
 .btn-return {
     position: absolute;
     bottom: -5px;
@@ -471,3 +465,61 @@ button:hover { background-color: #666; }
     flex-grow: 1;
     margin: 0 15px;
 }
+
+/* =========================================
+   ★新規追加：特別市場（投資）のレイアウト
+========================================= */
+.treasure-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.treasure-sidebar {
+    flex: 1 1 200px;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.treasure-main {
+    flex: 2 1 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.treasure-list-item {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.treasure-list-item:hover { background-color: #2a2a2a; }
+.treasure-list-item.selected { background-color: #333; border-left: 4px solid #d4af37; }
+
+.treasure-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+}
+
+/* 投資アイテム用アイコン（3x2グリッドを想定） */
+.t-icon {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    background-size: 300% 200%;
+}
+.t-img1 { background-image: url('image/treasure.png'); }
+.t-img2 { background-image: url('image/treasure2.png'); }
+
+.t-pos1 { background-position: 0% 0%; }
+.t-pos2 { background-position: 50% 0%; }
+.t-pos3 { background-position: 100% 0%; }
+.t-pos4 { background-position: 0% 100%; }
+.t-pos5 { background-position: 50% 100%; }
+.t-pos6 { background-position: 100% 100%; }

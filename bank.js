@@ -56,8 +56,16 @@ function switchBankTab(tabName) {
 function renderBankUI() {
     const area = document.getElementById('bank-content-area');
     
+    // ★修正：投資タブが選ばれたら特別市場UIをロードする
     if (currentBankTab === 'invest') {
-        area.innerHTML = `<h3 style="text-align:center; color:#ccc; margin: 40px 0;">投資は今後追加予定です...</h3>`;
+        area.innerHTML = `
+            <div id="treasure-market-container">
+                <p style="text-align:center; color:#ccc;">市場データを読み込み中...</p>
+            </div>
+        `;
+        if (typeof initTreasureMarket === 'function') {
+            initTreasureMarket();
+        }
         return;
     }
 
@@ -291,15 +299,11 @@ function checkBankPenalties() {
     }
 }
 
-// =========================================
-// ★新規追加：消費者金融の管理者機能
-// =========================================
 function adminResetBankDays() {
     const savedState = localStorage.getItem('bankState');
     if (savedState) {
         let state = JSON.parse(savedState);
         if (state.active) {
-            // 今日に日付を更新し、返済履歴をリセットして今日返せるようにする
             state.lastUpdateDate = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
             state.lastRepaymentDate = null;
             localStorage.setItem('bankState', JSON.stringify(state));
