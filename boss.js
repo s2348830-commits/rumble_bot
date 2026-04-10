@@ -705,13 +705,19 @@ function checkBossPhase() {
         logBattle("【能力発動】ギルドボスがシールドを展開！（被ダメージ30%カット）", true);
     }
     if (bossData.dayIndex === 5 && hpPercent <= 0.3 && bossData.evasionIntervalId === null) {
-        sendBossAction('apply_buff', 0, { bossEvasion: bossData.evasion + 20 });
-        logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion + 20}%）`, true);
+        let newEvasion = Math.min(20, bossData.evasion + 20);
+        sendBossAction('apply_buff', 0, { bossEvasion: newEvasion });
+        logBattle(`【バフ】ボスの回避率がアップ！（現在: ${newEvasion}% / 上限20%）`, true);
+        
         bossData.evasionIntervalId = setInterval(() => {
             if (bossData.isDefeated) return clearInterval(bossData.evasionIntervalId);
-            sendBossAction('apply_buff', 0, { bossEvasion: bossData.evasion + 20 });
-            logBattle(`【バフ】ボスの回避率がさらに20%アップ！（現在: ${bossData.evasion + 20}%）`, true);
-        }, 600000); 
+            
+            if (bossData.evasion < 20) {
+                let nextEvasion = Math.min(20, bossData.evasion + 20);
+                sendBossAction('apply_buff', 0, { bossEvasion: nextEvasion });
+                logBattle(`【バフ】ボスの回避率が再びアップ！（現在: ${nextEvasion}% / 上限20%）`, true);
+            }
+        }, 600000);
     }
 }
 
