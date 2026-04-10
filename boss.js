@@ -22,7 +22,6 @@ let bossData = {
     participants: 0,
     playerMaxHp: 0,
     playerCurrentHp: 0,
-    
     hasRevived: false,
     clones: [],
     lastCloneSummonTime: 0,
@@ -31,10 +30,7 @@ let bossData = {
     lastSealTime: 0
 };
 
-let playerDebuffs = {
-    burnUntil: 0,
-    shockCount: 0 
-};
+let playerDebuffs = { burnUntil: 0, shockCount: 0 };
 let playerShieldUntil = 0; 
 let skillCooldowns = { fireball: 0, shield: 0, accel: 0, relic: 0 };
 
@@ -47,45 +43,45 @@ let uiUpdateIntervalId = null;
 let freezeTimeoutId = null;
 let currentRelicIndex = 0; 
 
-// ★追加：10時開始用の待機フラグ
+// 10時開始用の待機フラグ
 let waitIntervalId = null;
 let waitingForStart = false;
+let bossSyncInterval = null; // 全体共有用同期ループ
 
-function loadBossState() {
-    const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
-    const saved = localStorage.getItem('bossState_' + todayStr);
-    
-    if (saved) {
-        const state = JSON.parse(saved);
-        bossData = Object.assign(bossData, state.bossData);
-        hasJoined = state.hasJoined || false;
-        battleLogs = state.logs || [];
-        
-        const logBox = document.getElementById('battle-log');
-        logBox.innerHTML = "";
-        battleLogs.forEach(msg => {
-            const p = document.createElement('p');
-            p.style.margin = "4px 0";
-            p.innerText = `> ${msg}`;
-            logBox.appendChild(p);
+// =========================================
+// DBと同期する通信関数群
+// =========================================
+async function sendBossAction(type, amount, data = null) {
+    try {
+        const response = await fetch('/api/boss/action', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ type, amount, data })
         });
-        logBox.scrollTop = logBox.scrollHeight; 
-    } else {
-        initBossState();
-    }
+        const res = await response.json();
+        const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+        
+        if (res.state && res.state.dateStr === todayStr) {
+            bossData.currentHp = res.state.bossHp;
+            bossData.maxHp = res.state.bossMaxHp;
+            bossData.playerCurrentHp = res.state.playerHp;
+            bossData.playerMaxHp = res.state.playerMaxHp;
+            bossData.participants = res.state.participants;
+            
+            if (res.state.isDefeated && !bossData.isDefeated) {
+                bossData.isDefeated = true;
+                defeatBoss();
+            }
+            if (res.state.hasRevived && !bossData.hasRevived) {
+                bossData.hasRevived = true;
+                logBattle("【蘇生】ボスが復活した！", true);
+            }
+            updateBossUI();
+        }
+    } catch(e) {}
 }
 
-function saveBossState() {
-    const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
-    const state = {
-        bossData: bossData,
-        hasJoined: hasJoined,
-        logs: battleLogs
-    };
-    localStorage.setItem('bossState_' + todayStr, JSON.stringify(state));
-}
-
-function initBossState(dayIndex = 5) {
+async function initBossState(dayIndex = 5) {
     const t = BOSS_TEMPLATES[dayIndex];
     bossData = {
         dayIndex: dayIndex,
@@ -111,29 +107,79 @@ function initBossState(dayIndex = 5) {
     hasJoined = false;
     battleLogs = [];
     document.getElementById('battle-log').innerHTML = ""; 
+
+    const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+    const doc = {
+        dateStr: todayStr,
+        dayIndex: dayIndex,
+        bossHp: t.maxHp,
+        bossMaxHp: t.maxHp,
+        playerHp: 0,
+        playerMaxHp: 0,
+        participants: 0,
+        isDefeated: false,
+        hasRevived: false
+    };
+    await sendBossAction('set_state', 0, doc);
 }
 
+async function loadBossState(dayIndex) {
+    try {
+        const res = await fetch('/api/global_state');
+        const data = await res.json();
+        const state = data.state || {};
+        const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+        
+        if (state.dateStr === todayStr && state.dayIndex === dayIndex) {
+            bossData.currentHp = state.bossHp;
+            bossData.maxHp = state.bossMaxHp;
+            bossData.playerCurrentHp = state.playerHp;
+            bossData.playerMaxHp = state.playerMaxHp;
+            bossData.participants = state.participants;
+            bossData.isDefeated = state.isDefeated;
+            bossData.hasRevived = state.hasRevived;
+            bossData.dayIndex = state.dayIndex;
+            const t = BOSS_TEMPLATES[state.dayIndex] || BOSS_TEMPLATES[5];
+            bossData.name = t.name;
+            bossData.image = t.image;
+            bossData.defeatImage = t.defeatImage;
+            bossData.reward = t.reward;
+
+            hasJoined = (localStorage.getItem('hasJoined_' + todayStr) === 'true');
+            battleLogs = [];
+            document.getElementById('battle-log').innerHTML = ""; 
+        } else {
+            await initBossState(dayIndex);
+            hasJoined = false;
+            localStorage.removeItem('hasJoined_' + todayStr);
+        }
+    } catch(e) { }
+}
+
+// ----------------------------------------
 function clearTimers() {
     if (bossAttackIntervalId) clearInterval(bossAttackIntervalId);
     if (bossPassiveIntervalId) clearInterval(bossPassiveIntervalId);
     if (uiUpdateIntervalId) clearInterval(uiUpdateIntervalId);
     if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
-    if (waitIntervalId) clearInterval(waitIntervalId); // 待機タイマーもクリア
+    if (waitIntervalId) clearInterval(waitIntervalId); 
+    if (bossSyncInterval) clearInterval(bossSyncInterval);
+    bossSyncInterval = null;
 }
 
-function startBoss(dayIndex) {
+async function startBoss(dayIndex) {
     const today = typeof getLogicalDay === 'function' ? getLogicalDay() : new Date().getDay(); 
-    
     let isUnlocked = false;
-    if (typeof getLogicalDateString === 'function') {
-        const unlockDataStr = localStorage.getItem('admin_unlocked_bosses');
-        if (unlockDataStr) {
-            const unlockData = JSON.parse(unlockDataStr);
-            if (unlockData.date === getLogicalDateString() && unlockData.days.includes(dayIndex)) {
-                isUnlocked = true;
-            }
+
+    try {
+        let res = await fetch('/api/global_state');
+        let stateRes = await res.json();
+        let state = stateRes.state || {};
+        const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+        if (state.unlockedDaysData && state.unlockedDaysData.date === todayStr) {
+            if ((state.unlockedDaysData.days || []).includes(dayIndex)) isUnlocked = true;
         }
-    }
+    } catch(e) {}
 
     if (dayIndex !== today && !isUnlocked) {
         alert("本日はこのボスには挑戦できません！");
@@ -143,13 +189,7 @@ function startBoss(dayIndex) {
     document.getElementById('boss-select-container').style.display = 'none';
     document.getElementById('boss-battle-container').style.display = 'block';
 
-    const saved = localStorage.getItem('bossState_' + (typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString()));
-    if (!saved) {
-        initBossState(dayIndex);
-    } else {
-        loadBossState();
-        if(bossData.dayIndex !== dayIndex) initBossState(dayIndex); 
-    }
+    await loadBossState(dayIndex);
     
     if(typeof resetAbilities === 'function') resetAbilities();
     togglePlayerFreeze(false);
@@ -157,11 +197,10 @@ function startBoss(dayIndex) {
     document.getElementById('boss-image').src = bossData.isDefeated ? bossData.defeatImage : bossData.image;
     document.getElementById('boss-name-display').innerText = bossData.name;
     
-    // ★変更：参加状態や10時開始の待機チェック
     if (bossData.isDefeated || (bossData.participants > 0 && bossData.playerCurrentHp <= 0)) {
         document.getElementById('join-boss-overlay').style.display = 'none';
         disableActions();
-        clearTimers(); // タイマーは動かさない
+        clearTimers(); 
     } 
     else if (hasJoined) {
         document.getElementById('join-boss-overlay').style.display = 'none';
@@ -171,33 +210,29 @@ function startBoss(dayIndex) {
         document.getElementById('join-boss-overlay').style.display = 'flex';
         document.getElementById('battle-actions-container').style.pointerEvents = 'none';
         document.getElementById('battle-actions-container').style.opacity = '0.5';
-        clearTimers(); // 参加するまで動かさない
+        clearTimers(); 
     }
 
     updateBossUI();
-    
-    if (battleLogs.length === 0) logBattle(`凶悪な ${bossData.name} が現れた！`);
+    if (battleLogs.length === 0) logBattle(`凶悪な ${bossData.name} が現れた！`, true);
 }
 
 function joinBoss() {
     if (hasJoined) return;
     
     hasJoined = true;
-    bossData.participants += 1;
-    bossData.playerMaxHp += 1000000;
-    bossData.playerCurrentHp += 1000000; 
-    
+    const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+    localStorage.setItem('hasJoined_' + todayStr, 'true');
+
     document.getElementById('join-boss-overlay').style.display = 'none';
     
     const pName = document.getElementById("player-name").innerText;
-    logBattle(`${pName} が戦闘に参加した！（参加者数: ${bossData.participants}人）`);
-    updateBossUI();
+    logBattle(`${pName} が戦闘に参加した！`, true);
     
-    // 参加後に10時のチェックを行って開始
+    sendBossAction('join', 0); // サーバーに参加人数とHP増加を通知
     checkAndStartBattle();
 }
 
-// ★追加：10時チェックと戦闘開始の振り分け
 function checkAndStartBattle() {
     const now = new Date();
     if (now.getHours() < 10) {
@@ -213,16 +248,15 @@ function checkAndStartBattle() {
                     clearInterval(waitIntervalId);
                     waitIntervalId = null;
                     waitingForStart = false;
-                    startBattleTimers(); // 10時になったら開始
+                    startBattleTimers(); 
                 }
             }, 1000);
         }
     } else {
-        startBattleTimers(); // 10時以降ならすぐ開始
+        startBattleTimers(); 
     }
 }
 
-// 戦闘のループタイマーを開始する
 function startBattleTimers() {
     document.getElementById('boss-waiting-overlay').style.display = 'none';
     document.getElementById('battle-actions-container').style.pointerEvents = 'auto';
@@ -232,12 +266,18 @@ function startBattleTimers() {
     bossAttackIntervalId = setInterval(bossAttackLoop, 10000);
     bossPassiveIntervalId = setInterval(bossPassiveLoop, 1000);
     uiUpdateIntervalId = setInterval(updateSkillCooldownUI, 200);
+    
+    // 全プレイヤーで状態を同期するための定期ポーリング (2秒ごと)
+    if(!bossSyncInterval) {
+        bossSyncInterval = setInterval(() => {
+            sendBossAction('poll', 0);
+        }, 2000);
+    }
 }
 
 function returnToMenuFromBattle() {
     clearTimers();
     if(typeof resetAbilities === 'function') resetAbilities();
-
     document.getElementById('boss-battle-container').style.display = 'none';
     document.getElementById('main-menu').style.display = 'block';
 }
@@ -249,13 +289,11 @@ function logBattle(message, dontSave = false) {
     p.innerText = `> ${message}`;
     logBox.appendChild(p);
     logBox.scrollTop = logBox.scrollHeight; 
-    
     battleLogs.push(message);
-    if (!dontSave) saveBossState();
 }
 
 function updateBossUI() {
-    const bossHpPercent = (bossData.currentHp / bossData.maxHp) * 100;
+    const bossHpPercent = bossData.maxHp > 0 ? (bossData.currentHp / bossData.maxHp) * 100 : 0;
     document.getElementById('boss-hp-bar').style.width = `${bossHpPercent}%`;
     document.getElementById('boss-hp-text').innerText = `${Math.floor(bossData.currentHp)} / ${bossData.maxHp}`;
     
@@ -287,20 +325,12 @@ function updateBossUI() {
         document.getElementById('clone-left').style.display = 'none';
         document.getElementById('clone-right').style.display = 'none';
     }
-
-    saveBossState(); 
 }
 
 function setSkillCooldown(skill, baseSec) {
     let ms = baseSec * 1000;
-    
-    if (bossData.dayIndex === 2 && (skill === 'fireball' || skill === 'accel')) {
-        ms *= 1.5;
-    }
-    if (typeof window.sunchaliceActive !== 'undefined' && window.sunchaliceActive) {
-        ms *= 0.7;
-    }
-    
+    if (bossData.dayIndex === 2 && (skill === 'fireball' || skill === 'accel')) ms *= 1.5;
+    if (typeof window.sunchaliceActive !== 'undefined' && window.sunchaliceActive) ms *= 0.7;
     skillCooldowns[skill] = Date.now() + ms;
 }
 
@@ -309,16 +339,20 @@ function updateSkillCooldownUI() {
     const hpBar = document.getElementById('player-hp-bar');
     
     if (hpBar) {
-        if (now < playerShieldUntil) {
-            hpBar.style.backgroundColor = '#00d4ff'; 
-        } else {
-            hpBar.style.backgroundColor = '#4CAF50'; 
-        }
+        hpBar.style.backgroundColor = (now < playerShieldUntil) ? '#00d4ff' : '#4CAF50'; 
     }
 
-    // 待機中や全滅時はボタンを更新しない
-    if (!hasJoined || waitingForStart || bossData.isDefeated || playerFrozen || bossData.playerCurrentHp <= 0) return;
+    if (!hasJoined || waitingForStart || bossData.isDefeated || bossData.playerCurrentHp <= 0) return;
     
+    // ★追加：凍結中はリターン(切り替え)以外を無効化
+    if (playerFrozen) {
+        ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
+            let btn = document.querySelector(`.btn-${skill}`);
+            if (btn) btn.disabled = true;
+        });
+        return;
+    }
+
     ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
         let btn = document.querySelector(`.btn-${skill}`);
         if (btn) {
@@ -347,18 +381,26 @@ function disableActions() {
     document.querySelectorAll('.skill-btn').forEach(btn => btn.disabled = true);
 }
 
+// ★修正：凍結中であっても btn-return（切り替えボタン）は押せるようにする
 function togglePlayerFreeze(isFrozen) {
     playerFrozen = isFrozen;
     const btns = document.querySelectorAll('.skill-btn');
     const labels = document.querySelectorAll('.skill-label');
 
     if (isFrozen) {
-        btns.forEach(b => b.disabled = true);
+        btns.forEach(b => {
+            if (!b.classList.contains('btn-return')) {
+                b.disabled = true;
+            }
+        });
         labels.forEach(l => {
-            l.innerText = "凍結/麻痺中";
-            l.style.color = "#55aaff";
+            if (l.id !== 'lbl-relic') {
+                l.innerText = "凍結/麻痺中";
+                l.style.color = "#55aaff";
+            }
         });
     } else {
+        btns.forEach(b => b.disabled = false);
         document.getElementById('lbl-fireball').innerText = "ファイヤーボール";
         document.getElementById('lbl-shield').innerText = "シールド";
         document.getElementById('lbl-accel').innerText = "集団加速";
@@ -368,6 +410,7 @@ function togglePlayerFreeze(isFrozen) {
             document.querySelector('.btn-relic').style.backgroundPosition = `${relic.bgX} ${relic.bgY}`;
         }
         labels.forEach(l => l.style.color = "#fff");
+        updateSkillCooldownUI();
     }
 }
 
@@ -375,7 +418,7 @@ function bossPassiveLoop() {
     if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
     
     const now = Date.now();
-    const hpPercent = bossData.currentHp / bossData.maxHp;
+    const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
 
     if (bossData.dayIndex === 1) healBoss(10);
     if (bossData.dayIndex === 3) healBoss(hpPercent >= 0.5 ? 30 : 40);
@@ -390,7 +433,7 @@ function bossPassiveLoop() {
         if (!bossData.lastCloneSummonTime || now >= bossData.lastCloneSummonTime + 6 * 60 * 60 * 1000) {
             let aliveClones = bossData.clones ? bossData.clones.filter(c => c.currentHp > 0) : [];
             if (aliveClones.length === 0) {
-                logBattle("【能力発動】砂の蛇王が分身を2体召喚し、挑発の構えをとった！");
+                logBattle("【能力発動】砂の蛇王が分身を2体召喚し、挑発の構えをとった！", true);
                 bossData.clones = [
                     { currentHp: bossData.maxHp * 0.03, maxHp: bossData.maxHp * 0.03 },
                     { currentHp: bossData.maxHp * 0.03, maxHp: bossData.maxHp * 0.03 }
@@ -412,7 +455,7 @@ function bossPassiveLoop() {
                 let idx = Math.floor(Math.random() * available.length);
                 bossData.sealedRelics.push(available.splice(idx, 1)[0]);
             }
-            logBattle(`【スキル封印】福臨により、1時間「${bossData.sealedRelics.join('」「')}」が封印された！`);
+            logBattle(`【スキル封印】福臨により、1時間「${bossData.sealedRelics.join('」「')}」が封印された！`, true);
             bossData.lastSealTime = now;
             updateBossUI();
         }
@@ -420,10 +463,7 @@ function bossPassiveLoop() {
 }
 
 function healBoss(amount) {
-    if (bossData.currentHp < bossData.maxHp) {
-        bossData.currentHp = Math.min(bossData.maxHp, bossData.currentHp + amount);
-        updateBossUI();
-    }
+    sendBossAction('heal_boss', amount);
 }
 
 function dealDamageToPlayer(amount, reason, isNormalAttack) {
@@ -437,37 +477,27 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
         if (reason === "電撃" && bossData.dayIndex === 4) finalDmg = Math.floor(amount * 0.7); 
     }
 
-    bossData.playerCurrentHp -= finalDmg;
-    if (bossData.playerCurrentHp < 0) bossData.playerCurrentHp = 0;
-    
+    sendBossAction('damage_player', finalDmg);
     if (isNormalAttack) {
-        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`);
-    }
-
-    updateBossUI();
-
-    if (bossData.playerCurrentHp <= 0) {
-        logBattle(`【全滅】プレイヤーのHPが0になった...`);
-        disableActions();
+        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true);
     }
 }
 
 function bossAttackLoop() {
     if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
 
-    logBattle(`【${bossData.name}の攻撃！】`);
-    
+    logBattle(`【${bossData.name}の攻撃！】`, true);
     let dmg = 1500 + Math.floor(Math.random() * 801);
     dealDamageToPlayer(dmg, "通常", true);
 
     if (bossData.dayIndex === 2) {
         playerDebuffs.burnUntil = Date.now() + 60 * 60 * 1000;
-        logBattle("邪地ノ炎魔の攻撃により、プレイヤーに1時間の燃焼が付与された！");
+        logBattle("邪地ノ炎魔の攻撃により、プレイヤーに1時間の燃焼が付与された！", true);
     }
 
     if (bossData.dayIndex === 4 && Math.random() < 0.3) {
         playerDebuffs.shockCount = Math.min(bossData.participants, 3);
-        logBattle("【雷連鎖】プレイヤーに電撃が付与され、10秒間行動不能！");
+        logBattle("【雷連鎖】プレイヤーに電撃が付与され、10秒間行動不能！", true);
         
         togglePlayerFreeze(true);
         if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
@@ -475,7 +505,7 @@ function bossAttackLoop() {
             if(!bossData.isDefeated && bossData.playerCurrentHp > 0) {
                 togglePlayerFreeze(false);
                 playerDebuffs.shockCount = 0; 
-                logBattle("電撃の麻痺から回復した！");
+                logBattle("電撃の麻痺から回復した！", true);
             }
         }, 10000); 
     }
@@ -487,20 +517,20 @@ function bossAttackLoop() {
 
     if (dispelChance > 0 && Math.random() < dispelChance) {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
-            logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！");
+            logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
             if(typeof resetAbilities === 'function') resetAbilities();
             bossData.evasion = 0; 
         }
     }
 
     if (bossData.dayIndex === 5 && !playerFrozen && Math.random() < 0.4) { 
-        logBattle("冷気が襲いかかる！プレイヤーは凍結され、30秒間行動不能になった！");
+        logBattle("冷気が襲いかかる！プレイヤーは凍結され、30秒間行動不能になった！", true);
         togglePlayerFreeze(true);
         if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
         freezeTimeoutId = setTimeout(() => {
             if(!bossData.isDefeated && bossData.playerCurrentHp > 0) {
                 togglePlayerFreeze(false);
-                logBattle("凍結が解除された！");
+                logBattle("凍結が解除された！", true);
             }
         }, 30000); 
     }
@@ -509,7 +539,7 @@ function bossAttackLoop() {
 }
 
 function switchRelic() {
-    if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined) return;
+    if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined) return;
     
     currentRelicIndex++;
     if (currentRelicIndex >= relicsData.length) currentRelicIndex = 0;
@@ -531,7 +561,7 @@ function useSkill(skillType) {
     } 
     else if (skillType === 'shield') {
         playerShieldUntil = Date.now() + 15 * 60 * 1000;
-        logBattle("【シールド】を展開した！（15分間、ボスの通常攻撃を20%軽減）");
+        logBattle("【シールド】を展開した！（15分間、ボスの通常攻撃を20%軽減）", true);
         setSkillCooldown('shield', 1);
         updateSkillCooldownUI(); 
     } 
@@ -552,15 +582,15 @@ function useSkill(skillType) {
 window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
     if (bossData.isDefeated) return 0;
     let amount = baseAmount;
-    const hpPercent = bossData.currentHp / bossData.maxHp;
+    const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
 
     if (bossData.dayIndex === 0) {
         if (hpPercent >= 0.5 && (type === 'fireball' || type === 'accel')) {
-            logBattle(`【無効化】日曜ボスの能力により ${skillName} は無効化された！`);
+            logBattle(`【無効化】日曜ボスの能力により ${skillName} は無効化された！`, true);
             return 0;
         }
         if (hpPercent <= 0.5 && type === 'relic') {
-            logBattle(`【無効化】日曜ボスの能力により聖遺物のダメージが無効化された！`);
+            logBattle(`【無効化】日曜ボスの能力により聖遺物のダメージが無効化された！`, true);
             return 0;
         }
     }
@@ -577,7 +607,7 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
     }
 
     if (bossData.evasion > 0 && Math.random() < (bossData.evasion / 100)) {
-        logBattle(`攻撃をかわされた！（ボスの回避率: ${bossData.evasion}%）`);
+        logBattle(`攻撃をかわされた！（ボスの回避率: ${bossData.evasion}%）`, true);
         return 0;
     }
 
@@ -588,7 +618,7 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         if (aliveClones.length > 0) {
             let targetClone = aliveClones[Math.floor(Math.random() * aliveClones.length)];
             targetClone.currentHp -= amount;
-            logBattle(`【挑発】分身体が攻撃を身代わりした！ 分身に ${amount} ダメージ！`);
+            logBattle(`【挑発】分身体が攻撃を身代わりした！ 分身に ${amount} ダメージ！`, true);
             updateBossUI();
             return amount;
         }
@@ -614,53 +644,39 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         }
         amount = remainingDamage;
         if (amount <= 0) {
-            logBattle(`【吸収】攻撃はボスのシールドに完全に防がれた！`);
+            logBattle(`【吸収】攻撃はボスのシールドに完全に防がれた！`, true);
             updateBossUI();
             return 0;
         }
     }
 
-    bossData.currentHp -= amount;
-    logBattle(`【${skillName}】 本体に ${amount} のダメージ！`);
+    sendBossAction('damage_boss', amount);
+    logBattle(`【${skillName}】 本体に ${amount} のダメージ！`, true);
     
-    if (bossData.currentHp <= 0 && !bossData.hasRevived) {
-        if (bossData.dayIndex === 3) { bossData.currentHp = bossData.maxHp * 0.60; bossData.hasRevived = true; logBattle("【蘇生】突風の鹿鬼がHP60%で復活した！"); }
-        else if (bossData.dayIndex === 4) { bossData.currentHp = bossData.maxHp * 0.40; bossData.hasRevived = true; logBattle("【蘇生】砂の蛇王がHP40%で復活した！"); }
-        else if (bossData.dayIndex === 0) { bossData.currentHp = bossData.maxHp * 0.10; bossData.hasRevived = true; logBattle("【蘇生】日曜ボスがHP10%で復活した！"); }
-    }
-
-    if (bossData.currentHp < 0) bossData.currentHp = 0;
-    
-    updateBossUI();
-    checkBossPhase();
-
-    if (bossData.currentHp <= 0) {
-        defeatBoss();
-    }
     return amount;
 };
 
 function checkBossPhase() {
-    const hpPercent = bossData.currentHp / bossData.maxHp;
+    const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
 
     if (bossData.dayIndex === 1 && hpPercent <= 0.5 && bossData.evasion < 40) {
         bossData.evasion = 40;
-        logBattle("【能力発動】潜淵の主の回避率が40%にUP！");
+        logBattle("【能力発動】潜淵の主の回避率が40%にUP！", true);
     }
     if (bossData.dayIndex === 6 && bossData.evasion < 60) {
         bossData.evasion = 60;
     }
     if (bossData.dayIndex === 5 && hpPercent <= 0.6 && !bossData.shieldActive) {
         bossData.shieldActive = true;
-        logBattle("【能力発動】ギルドボスがシールドを展開！（被ダメージ30%カット）");
+        logBattle("【能力発動】ギルドボスがシールドを展開！（被ダメージ30%カット）", true);
     }
     if (bossData.dayIndex === 5 && hpPercent <= 0.3 && bossData.evasionIntervalId === null) {
         bossData.evasion += 20;
-        logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion}%）`);
+        logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion}%）`, true);
         bossData.evasionIntervalId = setInterval(() => {
             if (bossData.isDefeated) return clearInterval(bossData.evasionIntervalId);
             bossData.evasion += 20;
-            logBattle(`【バフ】ボスの回避率がさらに20%アップ！（現在: ${bossData.evasion}%）`);
+            logBattle(`【バフ】ボスの回避率がさらに20%アップ！（現在: ${bossData.evasion}%）`, true);
         }, 600000); 
     }
 }
@@ -674,8 +690,8 @@ async function defeatBoss() {
     disableActions();
     document.querySelectorAll('.skill-label').forEach(lbl => lbl.innerText = "討伐完了");
     
-    logBattle(`見事 ${bossData.name} を討伐した！！！`);
-    logBattle(`討伐報酬として ${bossData.reward} G を獲得中...`);
+    logBattle(`見事 ${bossData.name} を討伐した！！！`, true);
+    logBattle(`討伐報酬として ${bossData.reward} G を獲得中...`, true);
     updateBossUI();
 
     try {
@@ -688,67 +704,52 @@ async function defeatBoss() {
         
         if (result.success) {
             document.getElementById('player-gold').innerText = result.newGold;
-            logBattle(`報酬受け取り完了！現在の所持金: ${result.newGold} G`);
+            logBattle(`報酬受け取り完了！現在の所持金: ${result.newGold} G`, true);
         } else {
-            logBattle("エラー：報酬の受け取りに失敗しました。");
+            logBattle("エラー：報酬の受け取りに失敗しました。", true);
         }
-    } catch(e) {
-        logBattle("通信エラーが発生しました。");
-    }
+    } catch(e) {}
 }
 
 function adminReviveBoss() {
-    loadBossState();
-    bossData.currentHp = bossData.maxHp;
-    bossData.isDefeated = false;
-    bossData.hasRevived = false;
-    saveBossState();
-    alert("現在のボスを全回復して復活させました。（再度ボス画面に入ると反映されます）");
-    document.getElementById('admin-boss-hp').value = '';
+    sendBossAction('set_state', 0, { bossHp: bossData.maxHp, isDefeated: false, hasRevived: false }).then(() => {
+        alert("現在のボスを全回復して復活させました。（再度ボス画面に入ると反映されます）");
+    });
 }
 
 function adminSetBossHp() {
     const hp = parseInt(document.getElementById('admin-boss-hp').value);
     if (!isNaN(hp)) {
-        loadBossState();
-        bossData.currentHp = hp;
-        if(bossData.currentHp <= 0) bossData.currentHp = 0;
-        bossData.isDefeated = false; 
-        saveBossState();
-        alert(`ボスのHPを ${hp} に設定しました。（再度ボス画面に入ると反映されます）`);
-        document.getElementById('admin-boss-hp').value = '';
+        sendBossAction('set_state', 0, { bossHp: hp, isDefeated: false, hasRevived: false }).then(() => {
+            alert(`ボスのHPを ${hp} に設定しました。（再度ボス画面に入ると反映されます）`);
+            document.getElementById('admin-boss-hp').value = '';
+        });
     }
 }
 
 function adminSetPlayerHp() {
     const hp = parseInt(document.getElementById('admin-player-hp').value);
     if (!isNaN(hp)) {
-        loadBossState();
-        bossData.playerCurrentHp = hp;
-        if(hp > bossData.playerMaxHp) bossData.playerMaxHp = hp; 
-        saveBossState();
-        alert(`プレイヤーHPを ${hp} に設定しました。（再度ボス画面に入ると反映されます）`);
-        document.getElementById('admin-player-hp').value = '';
+        sendBossAction('set_state', 0, { playerHp: hp }).then(() => {
+            alert(`プレイヤーHPを ${hp} に設定しました。（再度ボス画面に入ると反映されます）`);
+            document.getElementById('admin-player-hp').value = '';
+        });
     }
 }
 
+// ★修正：チェックを入れていないボスはロック（空配列の送信）になるよう変更
 function adminUnlockSelectedBosses() {
     const checkboxes = document.querySelectorAll('input[name="unlock-boss-day"]:checked');
     const selectedDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
     
-    if (selectedDays.length === 0) {
-        alert("解放するボスを選択してください。");
-        return;
-    }
-
     if (typeof getLogicalDateString === 'function') {
         const unlockData = {
             date: getLogicalDateString(),
-            days: selectedDays
+            days: selectedDays // チェックがない場合は空配列 [] が渡される
         };
-        localStorage.setItem('admin_unlocked_bosses', JSON.stringify(unlockData));
-        
-        checkboxes.forEach(cb => cb.checked = false);
-        alert("選択したボスを本日の朝5時まで解放しました。");
+        sendBossAction('unlock_days', 0, unlockData).then(() => {
+            alert("選択したボスの解放状態をサーバーに保存しました。\n（チェックしていないボスは挑戦不可になります）");
+            checkboxes.forEach(cb => cb.checked = false);
+        });
     }
 }

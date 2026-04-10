@@ -138,9 +138,8 @@ function addToCart(name, price) {
         cart[name] = { price: price, quantity: 0 };
     }
     
-    // ★追加：所持制限（上限個数）のチェック
     let catItem = catalog[name];
-    let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99; // 指定がなければ最大99
+    let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99;
     let currentInv = playerInventory[name] || 0;
     
     if (currentInv + cart[name].quantity + 1 > maxLimit) {
@@ -159,7 +158,6 @@ function changeQty(name, amount) {
         let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99;
         let currentInv = playerInventory[name] || 0;
         
-        // ★追加：所持制限（上限個数）のチェック
         if (amount > 0 && currentInv + cart[name].quantity + amount > maxLimit) {
             alert(`これ以上追加できません！ (所持制限: ${maxLimit}個)`);
             return;
@@ -316,7 +314,6 @@ function adminSetGold() {
     }
 }
 
-// ★修正：設定した価格と所持制限をサーバー(DB)へ送信して保存する
 async function adminSetShopItem() {
     const name = document.getElementById('admin-shop-item-select').value;
     const priceStr = document.getElementById('admin-shop-price').value;
@@ -333,10 +330,11 @@ async function adminSetShopItem() {
         const result = await response.json();
         
         if (result.success) {
-            alert(`${name} の設定をサーバーに保存しました。`);
+            alert(`${name} の設定をサーバーに保存しました！`);
             document.getElementById('admin-shop-price').value = '';
             document.getElementById('admin-shop-qty').value = '';
-            loadShopItems(); // 最新のデータをリロード
+            // ★最新のDB情報を読み込み直す
+            loadShopItems(); 
         } else {
             alert("エラー：保存に失敗しました。");
         }

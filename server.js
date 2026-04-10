@@ -11,7 +11,6 @@ const port = 3000;
 const MONGO_URI = "mongodb+srv://nakimusispec_db_user:20060403@cluster0.tueqe88.mongodb.net/?appName=Cluster0"; 
 const CLIENT_ID = "1491471551512449255"; 
 const CLIENT_SECRET = "h2HAw_NEwR5TirXfELAsFM_ohg2XR_Ed"; 
-// あなたのRenderのURL（https://〜.onrender.com）に書き換えてください
 const REDIRECT_URI = "https://rumble-bot-w6wv.onrender.com/api/callback";
 // ==========================================
 
@@ -54,20 +53,19 @@ async function setupDatabase() {
         const db = client.db('rpg_game');
         
         for (let item of defaultItems) {
-            await db.collection('items').updateOne({ name: item.name }, { $set: item }, { upsert: true });
+            await db.collection('items').updateOne({ name: item.name }, { $setOnInsert: item }, { upsert: true });
         }
         for (let w of defaultWeapons) {
-            await db.collection('weapons').updateOne({ name: w.name }, { $set: w }, { upsert: true });
+            await db.collection('weapons').updateOne({ name: w.name }, { $setOnInsert: w }, { upsert: true });
         }
         for (let o of defaultOthers) {
-            await db.collection('others').updateOne({ name: o.name }, { $set: o }, { upsert: true });
+            await db.collection('others').updateOne({ name: o.name }, { $setOnInsert: o }, { upsert: true });
         }
     } catch (err) {
         console.error("DB初期化エラー:", err);
     }
 }
 
-// --- ログイン関連 ---
 app.get('/api/login', (req, res) => {
     const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
     res.redirect(discordAuthUrl);
@@ -109,7 +107,6 @@ app.get('/api/me', (req, res) => {
     else { res.json({ loggedIn: false }); }
 });
 
-// --- 商品データ取得 ---
 app.get('/api/items', async (req, res) => {
     try { await client.connect(); res.json(await client.db('rpg_game').collection('items').find({}).toArray()); } catch (e) { res.status(500).send("DBエラー"); }
 });
@@ -120,7 +117,6 @@ app.get('/api/others', async (req, res) => {
     try { await client.connect(); res.json(await client.db('rpg_game').collection('others').find({}).toArray()); } catch (e) { res.status(500).send("DBエラー"); }
 });
 
-// --- 買い物処理 ---
 app.post('/api/buy', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false, message: "ログインしていません！" });
 
@@ -129,16 +125,32 @@ app.post('/api/buy', async (req, res) => {
         const cart = req.body.cart;
         let totalCost = 0; let itemNames = [];
 
+        await client.connect();
+        const db = client.db('rpg_game');
+        
+        let allItems = await db.collection('items').find({}).toArray();
+        let allWeapons = await db.collection('weapons').find({}).toArray();
+        let allOthers = await db.collection('others').find({}).toArray();
+        let catalogMap = {};
+        [...allItems, ...allWeapons, ...allOthers].forEach(i => catalogMap[i.name] = i);
+
+        const usersCollection = db.collection('users');
+        const user = await usersCollection.findOne({ discordId: discordId });
+        let currentInventory = user.inventory || {}; 
+
         for (const [name, item] of Object.entries(cart)) {
             totalCost += item.price * item.quantity;
             itemNames.push(`${name}×${item.quantity}`);
+            
+            let currentQty = currentInventory[name] || 0;
+            let catItem = catalogMap[name];
+            let maxLimit = (catItem && catItem.maxQty !== undefined) ? catItem.maxQty : 99;
+            if (currentQty + item.quantity > maxLimit) {
+                return res.json({ success: false, message: `${name} は上限（${maxLimit}個）を超えるため買えません！` });
+            }
         }
-        if (totalCost === 0) return res.json({ success: false, message: "商品は選ばれていないようだ。" });
 
-        await client.connect();
-        const usersCollection = client.db('rpg_game').collection('users');
-        const user = await usersCollection.findOne({ discordId: discordId });
-        let currentInventory = user.inventory || {}; 
+        if (totalCost === 0) return res.json({ success: false, message: "商品は選ばれていないようだ。" });
 
         if (user && user.gold >= totalCost) {
             const newGold = user.gold - totalCost;
@@ -162,7 +174,6 @@ app.post('/api/buy', async (req, res) => {
     } catch (error) { res.status(500).send("DBエラー"); }
 });
 
-// --- 売却処理 ---
 app.post('/api/sell', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false, message: "ログインしていません！" });
 
@@ -205,27 +216,18 @@ app.post('/api/sell', async (req, res) => {
     } catch (error) { res.status(500).send("DBエラー"); }
 });
 
-// ==========================================
-// ボス討伐報酬の受け取り処理
-// ==========================================
 app.post('/api/boss_reward', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
-
     try {
         const discordId = req.session.user.discordId;
         const reward = req.body.reward; 
-
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
         const user = await usersCollection.findOne({ discordId: discordId });
 
         if (user) {
             const newGold = user.gold + reward;
-            await usersCollection.updateOne(
-                { discordId: discordId },
-                { $set: { gold: newGold } }
-            );
-
+            await usersCollection.updateOne({ discordId: discordId }, { $set: { gold: newGold } });
             req.session.user.gold = newGold;
             res.json({ success: true, newGold: newGold });
         } else {
@@ -237,33 +239,109 @@ app.post('/api/boss_reward', async (req, res) => {
     }
 });
 
-// ==========================================
-// ★新規追加：プレイヤー状態（G・インベントリ）の任意同期処理
-// （消費者金融や猫アイテムなどでの変動をDBに保存する）
-// ==========================================
 app.post('/api/update_player', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
-
     try {
         const discordId = req.session.user.discordId;
         const newGold = req.body.gold; 
         const newInventory = req.body.inventory; 
-
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
-
-        await usersCollection.updateOne(
-            { discordId: discordId },
-            { $set: { gold: newGold, inventory: newInventory } }
-        );
-
+        await usersCollection.updateOne({ discordId: discordId }, { $set: { gold: newGold, inventory: newInventory } });
         req.session.user.gold = newGold;
         req.session.user.inventory = newInventory;
-        
         res.json({ success: true });
     } catch (error) { 
         console.error(error);
         res.status(500).send("DBエラー"); 
+    }
+});
+
+// 管理者：ショップ設定をDBに保存
+app.post('/api/admin/shop', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false });
+    try {
+        const name = req.body.name;
+        const price = req.body.price !== '' ? parseInt(req.body.price) : undefined;
+        const maxQty = req.body.maxQty !== '' ? parseInt(req.body.maxQty) : undefined;
+
+        await client.connect();
+        const db = client.db('rpg_game');
+
+        let updated = false;
+        for (let col of ['items', 'weapons', 'others']) {
+            const item = await db.collection(col).findOne({ name: name });
+            if (item) {
+                let updateFields = {};
+                if (price !== undefined && !isNaN(price)) updateFields.price = price;
+                if (maxQty !== undefined && !isNaN(maxQty)) updateFields.maxQty = maxQty;
+
+                if (Object.keys(updateFields).length > 0) {
+                    await db.collection(col).updateOne({ name: name }, { $set: updateFields });
+                    updated = true;
+                }
+                break;
+            }
+        }
+        res.json({ success: updated });
+    } catch (error) { 
+        console.error(error);
+        res.status(500).send("DBエラー"); 
+    }
+});
+
+// ==========================================
+// ★新規追加：全プレイヤーで共有するボス・全体ステータスAPI
+// ==========================================
+app.get('/api/global_state', async (req, res) => {
+    try {
+        await client.connect();
+        const db = client.db('rpg_game');
+        let state = await db.collection('global').findOne({ _id: 'boss_state' });
+        res.json({ success: true, state: state || {} });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+});
+
+app.post('/api/boss/action', async (req, res) => {
+    try {
+        await client.connect();
+        const db = client.db('rpg_game');
+        const { type, amount, data } = req.body;
+        
+        let doc = await db.collection('global').findOne({ _id: 'boss_state' });
+        if (!doc) doc = { bossHp: 1020000, bossMaxHp: 1020000, playerHp: 0, playerMaxHp: 0, participants: 0, unlockedDaysData: {} };
+
+        if (type === 'damage_boss') {
+            doc.bossHp = Math.max(0, doc.bossHp - amount);
+            if (doc.bossHp === 0 && !doc.hasRevived) {
+                if (doc.dayIndex === 3) { doc.bossHp = doc.bossMaxHp * 0.60; doc.hasRevived = true; }
+                else if (doc.dayIndex === 4) { doc.bossHp = doc.bossMaxHp * 0.40; doc.hasRevived = true; }
+                else if (doc.dayIndex === 0) { doc.bossHp = doc.bossMaxHp * 0.10; doc.hasRevived = true; }
+                else { doc.isDefeated = true; }
+            } else if (doc.bossHp === 0) {
+                doc.isDefeated = true;
+            }
+        } else if (type === 'damage_player') {
+            doc.playerHp = Math.max(0, doc.playerHp - amount);
+        } else if (type === 'heal_boss') {
+            doc.bossHp = Math.min(doc.bossMaxHp || 1020000, doc.bossHp + amount);
+        } else if (type === 'join') {
+            doc.participants = (doc.participants || 0) + 1;
+            doc.playerMaxHp = (doc.playerMaxHp || 0) + 1000000;
+            doc.playerHp = (doc.playerHp || 0) + 1000000;
+        } else if (type === 'set_state') {
+            doc = { ...doc, ...data }; 
+        } else if (type === 'unlock_days') {
+            doc.unlockedDaysData = data;
+        } 
+        // type === 'poll' の場合は何も変更せずに返す
+
+        await db.collection('global').updateOne({ _id: 'boss_state' }, { $set: doc }, { upsert: true });
+        res.json({ success: true, state: doc });
+    } catch (error) {
+        res.status(500).json({ success: false });
     }
 });
 
