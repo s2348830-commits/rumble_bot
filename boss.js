@@ -549,13 +549,15 @@ function bossAttackLoop() {
     if (dispelChance > 0 && Math.random() < dispelChance) {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
-            if(typeof resetAbilities === 'function') resetAbilities();
-            sendBossAction('apply_buff', 0, { bossEvasion: 0 }); 
+            
+            window.activeBurnIntervals.forEach(clearInterval);
+            window.activeBurnIntervals = [];
+            sendBossAction('apply_buff', 0, { bossEvasion: 0, crescentPercent: 5.0 }); 
         }
     }
 
     if (bossData.dayIndex === 5 && !playerFrozen && Math.random() < 0.4) { 
-        logBattle("冷気が襲いかかる！プレイヤーは凍結され、30秒間行動不能になった！", true);
+        logBattle("冷気が襲いかかる！プレイヤーは凍結され、15秒間行動不能になった！", true);
         togglePlayerFreeze(true);
         if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
         freezeTimeoutId = setTimeout(() => {
@@ -563,7 +565,7 @@ function bossAttackLoop() {
                 togglePlayerFreeze(false);
                 logBattle("凍結が解除された！", true);
             }
-        }, 30000); 
+        }, 15000); 
     }
     
     checkBossPhase();
