@@ -18,6 +18,22 @@ let cart = {};
 let playerInventory = {}; 
 let catalog = {}; 
 
+// ★特別アイテム（市場投資アイテム）の画像マッピング
+const specialItemIcons = {
+    "緋石の仮面": "t-icon t-img1 t-pos1",
+    "黄金のホルン": "t-icon t-img1 t-pos2",
+    "宵闇の神灯": "t-icon t-img1 t-pos3",
+    "輝く白鳴琴": "t-icon t-img1 t-pos4",
+    "血晶の棘": "t-icon t-img1 t-pos5",
+    "原初の蛇環": "t-icon t-img1 t-pos6",
+    "至高の聖杯": "t-icon t-img2 t-pos1",
+    "流雲の法螺": "t-icon t-img2 t-pos2",
+    "暁の王冠": "t-icon t-img2 t-pos3",
+    "野火の灼刃": "t-icon t-img2 t-pos4",
+    "朝露の連星": "t-icon t-img2 t-pos5",
+    "蒼露の星儀": "t-icon t-img2 t-pos6"
+};
+
 async function init() {
     const response = await fetch('/api/me');
     const data = await response.json();
@@ -62,7 +78,6 @@ async function init() {
             }
         }
 
-        // ★ログイン時に通知確認を実行
         checkNotifications();
 
     } else {
@@ -244,7 +259,13 @@ function renderInventory() {
         return;
     }
 
+    let hasItemsToSell = false;
+
     for (const [name, qty] of Object.entries(playerInventory)) {
+        // ★修正：特別アイテム（投資品）は誤操作防止のため一般ショップでの売却を禁止（非表示）
+        if (specialItemIcons && specialItemIcons[name]) continue;
+
+        hasItemsToSell = true;
         const itemData = catalog[name] || { price: 20, desc: "" }; 
         const sellPrice = Math.max(1, Math.floor(itemData.price / 20));
         const descHtml = itemData.desc ? itemData.desc.replace(/\n/g, '<br>') : '';
@@ -260,6 +281,13 @@ function renderInventory() {
             ${descHtml ? `<div class="item-desc">${descHtml}</div>` : ''}
         `;
         list.appendChild(li);
+    }
+
+    if (!hasItemsToSell) {
+        list.innerHTML = `
+            <li style='text-align:center;'>売却できるアイテムを持っていないようだ...<br>
+            <small style="color:#ffcc00;">※特別アイテムは「消費者金融 ＞ 投資」の市場から売却してください</small></li>
+        `;
     }
 }
 
@@ -419,11 +447,7 @@ async function adminSetGold() {
     }
 }
 
-// =========================================
-// ★新規：通知の自動確認システム
-// =========================================
 async function checkNotifications() {
-    // 未ログイン時や通信エラー時は何もしない
     if (!document.getElementById("player-info") || document.getElementById("player-info").style.display === "none") return;
     
     try {
@@ -431,14 +455,11 @@ async function checkNotifications() {
         const data = await res.json();
         
         if (data.success && data.notifications && data.notifications.length > 0) {
-            // 通知メッセージを表示
             data.notifications.forEach(msg => alert(`🎁 【ギフト到着】\n${msg}`));
             
-            // アイテムの手持ちを最新情報で上書き
             if (data.newInventory) {
                 playerInventory = data.newInventory;
                 
-                // 開いている画面があれば再描画してアイテム数を反映
                 if (typeof renderMainInventory === 'function' && document.getElementById("main-inventory-container").style.display !== "none") {
                     renderMainInventory();
                 }
@@ -452,7 +473,5 @@ async function checkNotifications() {
     }
 }
 
-// ★15秒ごとに自分宛の通知がないか確認する
 setInterval(checkNotifications, 15000);
-
 window.onload = init;

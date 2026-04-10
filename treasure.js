@@ -134,7 +134,6 @@ function drawCandlestickChart() {
         const yHigh = getY(d.high);
         const yLow = getY(d.low);
 
-        // 日本の一般的な配色：赤=陽線(上昇)、青/緑=陰線(下降)
         const isUp = d.close >= d.open;
         ctx.strokeStyle = isUp ? '#ff4444' : '#4CAF50';
         ctx.fillStyle = isUp ? '#ff4444' : '#4CAF50';
@@ -189,20 +188,33 @@ async function tradeMarketItem(action) {
     const item = marketData.items[selectedMarketItem];
     const currentPrice = item.history[item.history.length - 1].close;
 
-    const response = await fetch('/api/market/trade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: action, itemId: selectedMarketItem, itemName: item.name, price: currentPrice })
-    });
-    
-    const result = await response.json();
-    if (result.success) {
-        updateGoldLocally(result.newGold);
-        playerInventory = result.newInventory;
-        alert(result.message);
-        renderTreasureMarket(); // 所持数更新のため再描画
-        if(typeof renderMainInventory === 'function') renderMainInventory();
-    } else {
-        alert(result.message);
+    // ★修正：連打防止機能（処理中はボタンを押せなくする）
+    const buttons = document.querySelectorAll('.treasure-actions button');
+    buttons.forEach(btn => btn.disabled = true);
+
+    try {
+        const response = await fetch('/api/market/trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action, itemId: selectedMarketItem, itemName: item.name, price: currentPrice })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            // ★修正：古い持ち物データでの無駄な上書き（syncPlayerState）を防止
+            // サーバーから返ってきた最新データをUIに反映するだけに留める
+            playerInventory = result.newInventory;
+            document.getElementById("player-gold").innerText = result.newGold;
+            
+            renderTreasureMarket(); 
+            if(typeof renderMainInventory === 'function') renderMainInventory();
+        } else {
+            alert(result.message);
+        }
+    } catch(e) {
+        alert("通信エラーが発生しました。");
+    } finally {
+        // ★修正：処理が終わったらボタンを再度有効化
+        buttons.forEach(btn => btn.disabled = false);
     }
 }
