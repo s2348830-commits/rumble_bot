@@ -550,13 +550,15 @@ function bossAttackLoop() {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
             
-            window.activeBurnIntervals.forEach(clearInterval);
-            window.activeBurnIntervals = [];
+            // ★修正：resetAbilities() を呼んでもブラッディ等のプレイヤーバフが消えないようにしました
+            if(typeof resetAbilities === 'function') resetAbilities();
+            // ボス自身の回避率とクレセントの割合ダメージ耐性のみリセット
             sendBossAction('apply_buff', 0, { bossEvasion: 0, crescentPercent: 5.0 }); 
         }
     }
 
     if (bossData.dayIndex === 5 && !playerFrozen && Math.random() < 0.4) { 
+        // ★修正: 凍結を 15秒間 (15000) に変更
         logBattle("冷気が襲いかかる！プレイヤーは凍結され、15秒間行動不能になった！", true);
         togglePlayerFreeze(true);
         if (freezeTimeoutId) clearTimeout(freezeTimeoutId);

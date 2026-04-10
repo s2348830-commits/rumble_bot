@@ -17,18 +17,9 @@ window.activeBurnIntervals = [];
 window.sunchaliceActive = false; 
 
 function resetAbilities() {
-    window.fbBonusDamage = 0;
-    window.crescentPercent = 5.0;
-    window.sunchaliceActive = false;
+    // ★修正：ローカルの燃焼タイマーだけをクリアし、サーバーから共有されているバフは絶対に消さない
     window.activeBurnIntervals.forEach(clearInterval);
     window.activeBurnIntervals = [];
-    
-    // 全体のバフ状態をリセット
-    if (typeof sendBossAction === 'function') {
-        sendBossAction('apply_buff', 0, {
-            sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0, bossEvasion: 0
-        });
-    }
 }
 
 // --- 聖遺物発動ロジック ---
