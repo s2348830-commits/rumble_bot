@@ -27,12 +27,25 @@ let bossData = {
     lastCloneSummonTime: 0,
     absorbShields: [],
     sealedRelics: [],
-    lastSealTime: 0
+    lastSealTime: 0,
+    
+    // --- 新規要素 ---
+    iceFrozenUntil: 0, // 氷による停止期限
+    fogActiveUntil: 0, // 霧による回避バフ期限
 };
 
 let playerDebuffs = { burnUntil: 0, shockCount: 0 };
 let playerShieldUntil = 0; 
-let skillCooldowns = { fireball: 0, shield: 0, accel: 0, relic: 0 };
+
+// クールタイム管理
+let skillCooldowns = { 
+    fireball: 0, 
+    shield: 0, 
+    accel: 0, 
+    relic: 0,
+    ice: 0, // 氷のクールタイム期限
+    fog: 0  // 霧のクールタイム期限
+};
 
 let hasJoined = false;
 let battleLogs = [];
@@ -99,6 +112,10 @@ async function sendBossAction(type, amount, data = null) {
                 window.crescentPercent = res.state.buffs.crescentPercent;
                 playerShieldUntil = res.state.buffs.playerShieldUntil;
                 bossData.evasion = res.state.buffs.bossEvasion || 0;
+                
+                // ★新規バフ
+                bossData.iceFrozenUntil = res.state.buffs.iceFrozenUntil || 0;
+                bossData.fogActiveUntil = res.state.buffs.fogActiveUntil || 0;
             }
 
             updateBossUI();
@@ -127,7 +144,11 @@ async function initBossState(dayIndex = 5) {
         lastCloneSummonTime: 0,
         absorbShields: [],
         sealedRelics: [],
-        lastSealTime: 0
+        lastSealTime: 0,
+        
+        // --- 新規要素 ---
+        iceFrozenUntil: 0,
+        fogActiveUntil: 0,
     };
     hasJoined = false;
     battleLogs = [];
@@ -170,6 +191,10 @@ async function loadBossState(dayIndex) {
             bossData.image = t.image;
             bossData.defeatImage = t.defeatImage;
             bossData.reward = t.reward;
+
+            // ★新規バフの同期
+            bossData.iceFrozenUntil = state.buffs ? (state.buffs.iceFrozenUntil || 0) : 0;
+            bossData.fogActiveUntil = state.buffs ? (state.buffs.fogActiveUntil || 0) : 0;
 
             hasJoined = (localStorage.getItem('hasJoined_' + todayStr) === 'true');
             battleLogs = [];
@@ -236,6 +261,7 @@ async function startBoss(dayIndex) {
     } 
     else {
         document.getElementById('join-boss-overlay').style.display = 'flex';
+        // HTML要素を動的に操作する必要がある
         document.getElementById('battle-actions-container').style.pointerEvents = 'none';
         document.getElementById('battle-actions-container').style.opacity = '0.5';
         clearTimers(); 
@@ -336,6 +362,12 @@ function updateBossUI() {
     document.getElementById('player-hp-bar').style.width = `${playerHpPercent}%`;
     document.getElementById('player-hp-text').innerText = `${Math.floor(bossData.playerCurrentHp)} / ${bossData.playerMaxHp}`;
     
+    // ★新規バフの状態表示をUIに追加する（HTMLの変更が必要だが、コードはボスステータスに基づく）
+    let burnIcon = document.getElementById('burn-icon');
+    if (burnIcon) {
+        burnIcon.style.display = (Date.now() < playerDebuffs.burnUntil) ? 'inline-block' : 'none';
+    }
+
     if (bossData.dayIndex === 4 && bossData.clones && bossData.clones.length > 0) {
         if (bossData.clones[0] && bossData.clones[0].currentHp > 0) {
             document.getElementById('clone-left').style.display = 'block';
@@ -371,21 +403,35 @@ function updateSkillCooldownUI() {
     const now = Date.now();
     const hpBar = document.getElementById('player-hp-bar');
     
+    // ★新規バフによる色分け
     if (hpBar) {
-        hpBar.style.backgroundColor = (now < playerShieldUntil) ? '#00d4ff' : '#4CAF50'; 
+        if (now < bossData.fogActiveUntil) {
+            hpBar.style.backgroundColor = '#b0bec5'; // 霧（灰色）
+        } else if (now < playerShieldUntil) {
+            hpBar.style.backgroundColor = '#00d4ff'; // シールド（青色）
+        } else {
+            hpBar.style.backgroundColor = '#4CAF50'; // 通常（緑色）
+        }
+    }
+
+    // ボスのHPバーの色
+    const bossHpBar = document.getElementById('boss-hp-bar');
+    if (bossHpBar) {
+        bossHpBar.style.backgroundColor = (now < bossData.iceFrozenUntil) ? '#90caf9' : '#ff4444'; // 氷（水色）か通常
     }
 
     if (!hasJoined || waitingForStart || bossData.isDefeated || bossData.playerCurrentHp <= 0) return;
     
     if (playerFrozen) {
-        ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
+        ['fireball', 'shield', 'accel', 'relic', 'ice', 'fog'].forEach(skill => {
             let btn = document.querySelector(`.btn-${skill}`);
             if (btn) btn.disabled = true;
         });
         return;
     }
 
-    ['fireball', 'shield', 'accel', 'relic'].forEach(skill => {
+    // ★新規スキルを含む全てのスキルのクールタイムUI更新
+    ['fireball', 'shield', 'accel', 'relic', 'ice', 'fog'].forEach(skill => {
         let btn = document.querySelector(`.btn-${skill}`);
         if (btn) {
             if (now >= skillCooldowns[skill]) {
@@ -399,15 +445,33 @@ function updateSkillCooldownUI() {
                         document.getElementById('lbl-relic').innerText = relicsData[currentRelicIndex].name;
                         document.getElementById('lbl-relic').style.color = "#fff";
                     }
+                    if (skill === 'ice') {
+                        document.getElementById('lbl-ice').innerText = "氷";
+                        document.getElementById('lbl-ice').style.color = "#fff";
+                    }
+                    if (skill === 'fog') {
+                        document.getElementById('lbl-fog').innerText = "霧";
+                        document.getElementById('lbl-fog').style.color = "#fff";
+                    }
                 }
             } else {
                 btn.disabled = true;
+                if (skill === 'relic') {
+                    document.getElementById('lbl-relic').innerText = Math.ceil((skillCooldowns.relic - now) / 1000) + "s";
+                }
+                if (skill === 'ice') {
+                    document.getElementById('lbl-ice').innerText = Math.ceil((skillCooldowns.ice - now) / 1000) + "s";
+                }
+                if (skill === 'fog') {
+                    document.getElementById('lbl-fog').innerText = Math.ceil((skillCooldowns.fog - now) / 1000) + "s";
+                }
             }
         }
     });
 }
 
 function disableActions() {
+    // HTML要素を動的に操作する必要がある
     document.getElementById('battle-actions-container').style.pointerEvents = 'none';
     document.getElementById('battle-actions-container').style.opacity = '0.5';
     document.querySelectorAll('.skill-btn').forEach(btn => btn.disabled = true);
@@ -425,8 +489,8 @@ function togglePlayerFreeze(isFrozen) {
             }
         });
         labels.forEach(l => {
-            if (l.id !== 'lbl-relic') {
-                l.innerText = "凍結/麻痺中";
+            if (l.id !== 'lbl-relic' && l.id !== 'lbl-ice' && l.id !== 'lbl-fog') {
+                l.innerText = "停止中";
                 l.style.color = "#55aaff";
             }
         });
@@ -435,18 +499,44 @@ function togglePlayerFreeze(isFrozen) {
         document.getElementById('lbl-fireball').innerText = "ファイヤーボール";
         document.getElementById('lbl-shield').innerText = "シールド";
         document.getElementById('lbl-accel').innerText = "集団加速";
+        
+        // クールタイム中なら時間を、そうでなければスキル名をラベルに表示
+        if (Date.now() < skillCooldowns.ice) {
+             document.getElementById('lbl-ice').innerText = Math.ceil((skillCooldowns.ice - Date.now()) / 1000) + "s";
+        } else {
+            document.getElementById('lbl-ice').innerText = "氷";
+        }
+        
+        if (Date.now() < skillCooldowns.fog) {
+             document.getElementById('lbl-fog').innerText = Math.ceil((skillCooldowns.fog - Date.now()) / 1000) + "s";
+        } else {
+            document.getElementById('lbl-fog').innerText = "霧";
+        }
+
         const relic = relicsData[currentRelicIndex];
         if(relic) {
-            document.getElementById('lbl-relic').innerText = relic.name;
-            document.querySelector('.btn-relic').style.backgroundPosition = `${relic.bgX} ${relic.bgY}`;
+            if (bossData.sealedRelics && bossData.sealedRelics.includes(relic.name)) {
+                document.getElementById('lbl-relic').innerText = "封印中...";
+                document.getElementById('lbl-relic').style.color = "#ff4444";
+            } else {
+                document.getElementById('lbl-relic').innerText = relic.name;
+                document.getElementById('lbl-relic').style.color = "#fff";
+                document.querySelector('.btn-relic').style.backgroundPosition = `${relic.bgX} ${relic.bgY}`;
+            }
         }
-        labels.forEach(l => l.style.color = "#fff");
+        
+        labels.forEach(l => {
+            if(l.id !== 'lbl-relic' || (bossData.sealedRelics && !bossData.sealedRelics.includes(relicsData[currentRelicIndex].name))) {
+                 l.style.color = "#fff";
+            }
+        });
         updateSkillCooldownUI();
     }
 }
 
 function bossPassiveLoop() {
-    if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
+    // ★修正：氷による停止チェック
+    if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0 || Date.now() < bossData.iceFrozenUntil) return;
     
     const now = Date.now();
     const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
@@ -502,6 +592,12 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
     const now = Date.now();
     let hasShield = (playerShieldUntil > now);
 
+    // ★霧による回避チェック
+    if (isNormalAttack && now < bossData.fogActiveUntil && Math.random() < 0.1) {
+        logBattle("【回避】ボスの攻撃を霧に紛れて回避した！", true);
+        return; 
+    }
+
     if (hasShield) {
         if (isNormalAttack) finalDmg = Math.floor(amount * 0.8); 
         if (reason === "燃焼" && bossData.dayIndex === 2) finalDmg = Math.floor(amount * 0.5); 
@@ -515,7 +611,8 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
 }
 
 function bossAttackLoop() {
-    if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
+    // ★修正：氷による停止チェック
+    if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0 || Date.now() < bossData.iceFrozenUntil) return;
 
     logBattle(`【${bossData.name}の攻撃！】`, true);
     let dmg = 1500 + Math.floor(Math.random() * 801);
@@ -550,7 +647,7 @@ function bossAttackLoop() {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
             
-            // ★修正：resetAbilities() を呼んでもブラッディ等のプレイヤーバフが消えないようにしました
+            // ★修正：resetAbilities() を呼んでもプレイヤーのバフ（氷、霧、盾）が消えないようにしました
             if(typeof resetAbilities === 'function') resetAbilities();
             // ボス自身の回避率とクレセントの割合ダメージ耐性のみリセット
             sendBossAction('apply_buff', 0, { bossEvasion: 0, crescentPercent: 5.0 }); 
@@ -558,7 +655,7 @@ function bossAttackLoop() {
     }
 
     if (bossData.dayIndex === 5 && !playerFrozen && Math.random() < 0.4) { 
-        // ★修正: 凍結を 15秒間 (15000) に変更
+        // 凍結を 15秒間 (15000) に変更
         logBattle("冷気が襲いかかる！プレイヤーは凍結され、15秒間行動不能になった！", true);
         togglePlayerFreeze(true);
         if (freezeTimeoutId) clearTimeout(freezeTimeoutId);
@@ -581,7 +678,42 @@ function switchRelic() {
     
     const relic = relicsData[currentRelicIndex];
     document.getElementById('lbl-relic').innerText = relic.name;
-    document.querySelector('.btn-relic').style.backgroundPosition = `${relic.bgX} ${relic.bgY}`;
+    if (!bossData.sealedRelics || !bossData.sealedRelics.includes(relic.name)) {
+        document.getElementById('lbl-relic').style.color = "#fff";
+        document.querySelector('.btn-relic').style.backgroundPosition = `${relic.bgX} ${relic.bgY}`;
+    } else {
+        document.getElementById('lbl-relic').innerText = "封印中...";
+        document.getElementById('lbl-relic').style.color = "#ff4444";
+    }
+}
+
+// =========================================
+// ★新規：氷と霧のスキル処理
+// =========================================
+function useIce() {
+    if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined || waitingForStart || Date.now() < skillCooldowns.ice) return;
+    
+    const pName = document.getElementById("player-name").innerText;
+    
+    // ボスの時間を 30秒止める
+    bossData.iceFrozenUntil = Date.now() + 30 * 1000;
+    sendBossAction('apply_buff', 0, { iceFrozenUntil: bossData.iceFrozenUntil });
+    logBattle(`【氷】${pName}が氷の魔力を解き放った！敵の動きが30秒間停止する！`, false);
+    
+    setSkillCooldown('ice', 300); // クールタイム 5分
+}
+
+function useFog() {
+    if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined || waitingForStart || Date.now() < skillCooldowns.fog) return;
+    
+    const pName = document.getElementById("player-name").innerText;
+    
+    // 回避バフを 5分付与
+    bossData.fogActiveUntil = Date.now() + 5 * 60 * 1000;
+    sendBossAction('apply_buff', 0, { fogActiveUntil: bossData.fogActiveUntil });
+    logBattle(`【霧】${pName}が戦場を霧で覆った！5分間、10%の確率で攻撃を回避する！`, false);
+    
+    setSkillCooldown('fog', 300); // クールタイム 5分
 }
 
 function useSkill(skillType) {
@@ -599,7 +731,7 @@ function useSkill(skillType) {
     else if (skillType === 'shield') {
         playerShieldUntil = Date.now() + 15 * 60 * 1000;
         sendBossAction('apply_buff', 0, { playerShieldUntil: playerShieldUntil }); 
-        logBattle(`【${pName}のシールド！】展開した！（15分間、ボスの通常攻撃を20%軽減）`, false);
+        logBattle(`【盾】${pName}のシールド展開！（15分間、ボスの通常攻撃を20%軽減）`, false);
         setSkillCooldown('shield', 1);
         updateSkillCooldownUI(); 
     } 
@@ -757,6 +889,7 @@ async function defeatBoss() {
             alert("ログインの有効期限が切れてしまったため、報酬を一時保留しました。\nページを更新（リロード）して再ログインすると自動的に付与されます！");
         }
     } catch(e) {
+        // ★修正：通信エラー時も未受け取り報酬として一時保存
         logBattle("通信エラーにより報酬が受け取れませんでした。", true);
         let pending = parseInt(localStorage.getItem('pendingReward') || '0');
         localStorage.setItem('pendingReward', pending + bossData.reward);

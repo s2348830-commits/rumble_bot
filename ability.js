@@ -7,7 +7,7 @@ const relicsData = [
     { name: "フェイトスピア", bgX: "50%",  bgY: "50%" },
     { name: "ブラッディ",     bgX: "100%", bgY: "50%" },
     { name: "ステラアリア",   bgX: "0%",   bgY: "100%" },
-    { name: "クレセント",     bgX: "50%",  bgY: "100%" },
+    { name: "クレ Crescent",  bgX: "50%",  bgY: "100%" },
     { name: "秩序の双輝刃",   bgX: "100%", bgY: "100%" }
 ];
 
@@ -62,7 +62,7 @@ function executeRelicAbility(relicName, pName = "誰か") {
             }
             break;
         case "サンチャリス":
-            // ★15分間 (15 * 60 * 1000) クールタイム短縮
+            // 15分間 (15 * 60 * 1000) クールタイム短縮
             sendBossAction('apply_buff', 0, { sunchaliceUntil: Date.now() + 15 * 60 * 1000 }); 
             logBattle(`【効果】${pName}により、クールタイム短縮効果が発動した！(全プレイヤーの全スキルのCT30%短縮、15分間有効)`, false);
             break;
@@ -71,7 +71,7 @@ function executeRelicAbility(relicName, pName = "誰か") {
             startBurn(30, 10000, 600000); 
             break;
         case "ブラッディ":
-            // ★20分間 (20 * 60 * 1000) FBダメージ増加
+            // 20分間 (20 * 60 * 1000) FBダメージ増加
             let newBonus = (window.fbBonusDamage || 0) + 100;
             sendBossAction('apply_buff', 0, { fbBonusDamage: newBonus, bloodyUntil: Date.now() + 20 * 60 * 1000 });
             logBattle(`【効果】${pName}により、全プレイヤーのファイヤーボールの威力が上昇した！（追加ダメージ: +${newBonus}、20分間有効）`, false);
@@ -80,7 +80,7 @@ function executeRelicAbility(relicName, pName = "誰か") {
             sendBossAction('apply_buff', 0, { bossEvasion: 0 });
             logBattle(`【効果】${pName}が敵のバフを解除し、攻撃力を40%低下させた！(回避率も0にリセット)`, false);
             break;
-        case "クレセント":
+        case "クレ Crescent":
             let currentPct = window.crescentPercent || 5.0;
             let pctDmg = Math.floor(bossData.currentHp * (currentPct / 100));
             dealBossDmg(pctDmg, false); 
