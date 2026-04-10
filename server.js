@@ -88,12 +88,35 @@ app.get('/api/callback', async (req, res) => {
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
 
+        // 古い名前から新しい名前へのマイグレーション設定
+        const oldNamesMap = {
+            "古代の金貨": "緋石の仮面", "エルフの秘薬": "黄金のホルン", "ドワーフの鉄": "宵闇の神灯",
+            "魔力結晶": "輝く白鳴琴", "星屑の砂": "血晶の棘", "竜の牙": "原初の蛇環",
+            "不死鳥の羽": "至高の聖杯", "マーメイドの涙": "流雲の法螺", "ゴーレムの心臓": "暁の王冠",
+            "精霊の銀": "野火の灼刃", "暗黒物質": "朝露の連星", "女神の涙": "蒼露の星儀"
+        };
+
         let user = await usersCollection.findOne({ discordId: discordUser.id });
         if (!user) {
             user = { discordId: discordUser.id, name: discordUser.username, gold: 50000, inventory: {} }; 
             await usersCollection.insertOne(user);
         } else {
-            await usersCollection.updateOne({ discordId: discordUser.id }, { $set: { name: discordUser.username } });
+            let inventoryModified = false;
+            let currentInv = user.inventory || {};
+            for (let oldName in oldNamesMap) {
+                if (currentInv[oldName]) {
+                    const newName = oldNamesMap[oldName];
+                    currentInv[newName] = (currentInv[newName] || 0) + currentInv[oldName];
+                    delete currentInv[oldName];
+                    inventoryModified = true;
+                }
+            }
+            if (inventoryModified) {
+                await usersCollection.updateOne({ discordId: discordUser.id }, { $set: { name: discordUser.username, inventory: currentInv } });
+                user.inventory = currentInv;
+            } else {
+                await usersCollection.updateOne({ discordId: discordUser.id }, { $set: { name: discordUser.username } });
+            }
             user.name = discordUser.username;
         }
 
@@ -314,7 +337,7 @@ let globalBossState = {
     buffs: {
         sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
         playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
-        iceFrozenUntil: 0, fogActiveUntil: 0
+        iceFrozenUntil: 0, fogActiveUntil: 0 
     }
 };
 let isGlobalStateLoaded = false;
@@ -411,7 +434,6 @@ app.post('/api/boss/action', async (req, res) => {
 // ★新規追加：特別市場（投資）のDBと価格変動ロジック
 // ==========================================
 
-// JSTでの論理日付（朝5時切り替え）を取得する関数
 function getJSTLogicalDate() {
     const now = new Date();
     const jstTime = now.getTime() + (9 * 60 * 60 * 1000); 
@@ -422,56 +444,51 @@ function getJSTLogicalDate() {
     return `${jstDate.getUTCFullYear()}-${String(jstDate.getUTCMonth()+1).padStart(2, '0')}-${String(jstDate.getUTCDate()).padStart(2, '0')}`;
 }
 
+// ★修正：名前を新しい12種類に変更
 const marketItemsDef = [
-    { id: "m1", name: "古代の金貨", basePrice: 500, imgIndex: 1, posIndex: 1 },
-    { id: "m2", name: "エルフの秘薬", basePrice: 1000, imgIndex: 1, posIndex: 2 },
-    { id: "m3", name: "ドワーフの鉄", basePrice: 1500, imgIndex: 1, posIndex: 3 },
-    { id: "m4", name: "魔力結晶", basePrice: 2000, imgIndex: 1, posIndex: 4 },
-    { id: "m5", name: "星屑の砂", basePrice: 3000, imgIndex: 1, posIndex: 5 },
-    { id: "m6", name: "竜の牙", basePrice: 5000, imgIndex: 1, posIndex: 6 },
-    { id: "m7", name: "不死鳥の羽", basePrice: 7500, imgIndex: 2, posIndex: 1 },
-    { id: "m8", name: "マーメイドの涙", basePrice: 10000, imgIndex: 2, posIndex: 2 },
-    { id: "m9", name: "ゴーレムの心臓", basePrice: 12000, imgIndex: 2, posIndex: 3 },
-    { id: "m10", name: "精霊の銀", basePrice: 15000, imgIndex: 2, posIndex: 4 },
-    { id: "m11", name: "暗黒物質", basePrice: 20000, imgIndex: 2, posIndex: 5 },
-    { id: "m12", name: "女神の涙", basePrice: 30000, imgIndex: 2, posIndex: 6 }
+    { id: "m10", name: "野火の灼刃", basePrice: 15000, imgIndex: 2, posIndex: 4 },
+    { id: "m5",  name: "血晶の棘", basePrice: 3000, imgIndex: 1, posIndex: 5 },
+    { id: "m1",  name: "緋石の仮面", basePrice: 500, imgIndex: 1, posIndex: 1 },
+    { id: "m2",  name: "黄金のホルン", basePrice: 1000, imgIndex: 1, posIndex: 2 },
+    { id: "m6",  name: "原初の蛇環", basePrice: 5000, imgIndex: 1, posIndex: 6 },
+    { id: "m7",  name: "至高の聖杯", basePrice: 7500, imgIndex: 2, posIndex: 1 },
+    { id: "m9",  name: "暁の王冠", basePrice: 12000, imgIndex: 2, posIndex: 3 },
+    { id: "m3",  name: "宵闇の神灯", basePrice: 1500, imgIndex: 1, posIndex: 3 },
+    { id: "m4",  name: "輝く白鳴琴", basePrice: 2000, imgIndex: 1, posIndex: 4 },
+    { id: "m8",  name: "流雲の法螺", basePrice: 10000, imgIndex: 2, posIndex: 2 },
+    { id: "m12", name: "蒼露の星儀", basePrice: 30000, imgIndex: 2, posIndex: 6 },
+    { id: "m11", name: "朝露の連星", basePrice: 20000, imgIndex: 2, posIndex: 5 }
 ];
 
-// 市場の1日の変動をシミュレートする（平均回帰＋トレンド）
 function simulateMarketDay(itemState, def) {
     const minPrice = Math.max(10, Math.floor(def.basePrice * 0.3));
     const maxPrice = Math.floor(def.basePrice * 3.0);
     
     let currentPrice = itemState.history[itemState.history.length - 1].close;
 
-    // トレンドの更新
     if (!itemState.trend || itemState.trendDays <= 0) {
         itemState.trend = (Math.random() > 0.5 ? 1 : -1);
-        itemState.trendDays = Math.floor(Math.random() * 3) + 1; // 1〜3日持続
+        itemState.trendDays = Math.floor(Math.random() * 3) + 1; 
     }
 
-    // 平均回帰ロジック（上限・下限に近づくと逆の力が働く）
     if (currentPrice > maxPrice * 0.8) itemState.trend = -1;
     else if (currentPrice < minPrice * 1.2) itemState.trend = 1;
 
     itemState.trendDays--;
 
-    // ボラティリティ（変動幅）の計算
-    const volatility = currentPrice * 0.05; // 基準は5%
+    const volatility = currentPrice * 0.05; 
     const trendMove = itemState.trend * volatility * (Math.random() * 0.5 + 0.5);
     const randomMove = (Math.random() - 0.5) * volatility;
 
     let newClose = Math.floor(currentPrice + trendMove + randomMove);
-    newClose = Math.max(minPrice, Math.min(maxPrice, newClose)); // 異常値ブロック
+    newClose = Math.max(minPrice, Math.min(maxPrice, newClose)); 
 
     let open = currentPrice;
     let close = newClose;
 
-    // ヒゲ（高値・安値）の計算
     let high = Math.floor(Math.max(open, close) + Math.random() * volatility);
     let low = Math.floor(Math.min(open, close) - Math.random() * volatility);
 
-    // 履歴に追加（最大30日保存）
     itemState.history.push({ open, high, low, close });
     if (itemState.history.length > 30) itemState.history.shift();
 }
@@ -484,7 +501,6 @@ app.get('/api/market', async (req, res) => {
         const todayStr = getJSTLogicalDate();
 
         if (!state) {
-            // 初期化
             state = { _id: 'market_state', date: todayStr, items: {} };
             for (let def of marketItemsDef) {
                 state.items[def.id] = {
@@ -495,25 +511,36 @@ app.get('/api/market', async (req, res) => {
                     trendDays: 2,
                     history: [{ open: def.basePrice, high: def.basePrice*1.05, low: def.basePrice*0.95, close: def.basePrice }]
                 };
-                // 初期の30日分を生成
                 for (let i = 0; i < 29; i++) {
                     simulateMarketDay(state.items[def.id], def);
                 }
             }
             await db.collection('global').insertOne(state);
-        } else if (state.date !== todayStr) {
-            // 日付が変わっていれば差分をシミュレート
-            const oldDate = new Date(state.date);
-            const newDate = new Date(todayStr);
-            let diffDays = Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24));
-            if (diffDays > 0) {
-                if (diffDays > 30) diffDays = 30; // 上限
-                for (let i = 0; i < diffDays; i++) {
-                    for (let def of marketItemsDef) {
-                        simulateMarketDay(state.items[def.id], def);
-                    }
+        } else {
+            // DB上の古い名前を最新のものに強制アップデート（DBに古い名前が残っている場合の対策）
+            let needsUpdate = false;
+            for (let def of marketItemsDef) {
+                if (state.items[def.id] && state.items[def.id].name !== def.name) {
+                    state.items[def.id].name = def.name;
+                    needsUpdate = true;
                 }
-                state.date = todayStr;
+            }
+
+            if (state.date !== todayStr) {
+                const oldDate = new Date(state.date);
+                const newDate = new Date(todayStr);
+                let diffDays = Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24));
+                if (diffDays > 0) {
+                    if (diffDays > 30) diffDays = 30; 
+                    for (let i = 0; i < diffDays; i++) {
+                        for (let def of marketItemsDef) {
+                            simulateMarketDay(state.items[def.id], def);
+                        }
+                    }
+                    state.date = todayStr;
+                    await db.collection('global').updateOne({ _id: 'market_state' }, { $set: state });
+                }
+            } else if (needsUpdate) {
                 await db.collection('global').updateOne({ _id: 'market_state' }, { $set: state });
             }
         }
@@ -524,7 +551,6 @@ app.get('/api/market', async (req, res) => {
     }
 });
 
-// 市場アイテムの売買
 app.post('/api/market/trade', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false, message: "ログインしていません！" });
 

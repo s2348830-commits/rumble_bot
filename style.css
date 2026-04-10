@@ -24,6 +24,14 @@ body {
     z-index: 100;
 }
 
+.admin-login-area {
+    position: absolute; 
+    top: 10px; 
+    right: 10px; 
+    display: flex; 
+    gap: 5px;
+}
+
 /* 各種コンテナの共通デザイン */
 #shop-container, 
 #login-container, 
@@ -467,7 +475,7 @@ button:hover { background-color: #666; }
 }
 
 /* =========================================
-   ★新規追加：特別市場（投資）のレイアウト
+   特別市場（投資）のレイアウト
 ========================================= */
 .treasure-layout {
     display: flex;
@@ -507,7 +515,6 @@ button:hover { background-color: #666; }
     margin-top: 15px;
 }
 
-/* 投資アイテム用アイコン（3x2グリッドを想定） */
 .t-icon {
     display: inline-block;
     width: 32px;
@@ -523,3 +530,98 @@ button:hover { background-color: #666; }
 .t-pos4 { background-position: 0% 100%; }
 .t-pos5 { background-position: 50% 100%; }
 .t-pos6 { background-position: 100% 100%; }
+
+/* =========================================
+   ★スマホ対応（レスポンシブデザイン）
+========================================= */
+@media screen and (max-width: 768px) {
+    body {
+        padding: 10px;
+        display: block; /* 中央固定を解除して自然にスクロールさせる */
+    }
+
+    /* 名前と所持金を画面上部に自然に配置 */
+    #player-info {
+        position: static;
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    /* 管理者ボタンを右上に相対配置 */
+    .admin-login-area {
+        position: relative;
+        top: auto; right: auto;
+        justify-content: flex-end;
+        margin-bottom: 15px;
+    }
+
+    /* コンテナの幅を画面いっぱいに */
+    #shop-container, #login-container, #main-menu, 
+    #boss-select-container, #boss-battle-container, 
+    #main-inventory-container, #bank-container, #admin-container {
+        margin-top: 10px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 15px 10px;
+    }
+
+    /* メニューボタンを2列（小さければ1列）に最適化 */
+    .menu-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .menu-card {
+        width: 45%;
+        margin: 5px;
+    }
+
+    /* バトルログを画面端の固定から、コンテナ内部の通常配置へ変更 */
+    .battle-log {
+        position: relative;
+        top: auto; left: auto;
+        width: 100%;
+        height: 120px;
+        box-sizing: border-box;
+        margin-top: 15px;
+        margin-bottom: 15px;
+    }
+
+    /* 投資チャートのキャンバスをはみ出さないように縮小 */
+    #market-chart {
+        width: 100% !important;
+        height: auto !important;
+    }
+
+    /* 投資のレイアウトを縦並びに変更 */
+    .treasure-layout {
+        flex-direction: column;
+    }
+    .treasure-sidebar {
+        max-height: 250px; /* スマホでは高さを抑える */
+    }
+
+    /* スキルボタン全体をスマホ画面に合わせて縮小 */
+    .attack-ui-container {
+        transform: scale(0.85); /* 15%縮小 */
+        transform-origin: top center;
+        margin-bottom: -30px; /* 縮小して余った下の隙間を詰める */
+    }
+}
+
+/* ★さらに小さい画面（iPhone SEなど）用の微調整 */
+@media screen and (max-width: 400px) {
+    .menu-card {
+        width: 100%; /* メニューを1列にする */
+    }
+    .attack-ui-container {
+        transform: scale(0.75); /* さらに縮小してはみ出しを防ぐ */
+        margin-bottom: -50px;
+    }
+    .tab-btn {
+        font-size: 0.8em;
+        padding: 6px 2px;
+    }
+}

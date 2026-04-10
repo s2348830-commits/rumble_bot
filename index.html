@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RPG風ショップ</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -19,7 +19,7 @@
     </div>
 
     <div id="main-menu" style="display: none;">
-        <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 5px;">
+        <div class="admin-login-area">
             <input type="password" id="admin-pass" placeholder="パスワード" style="width: 80px; background: #000; color:#fff; border:1px solid #555; border-radius:3px; padding:2px;">
             <button onclick="checkAdmin()" style="padding: 2px 5px; font-size:0.8em;">管理</button>
         </div>
@@ -267,5 +267,6 @@
     <script src="ability.js"></script>
     <script src="boss.js"></script>
     <script src="bank.js"></script>
-    <script src="treasure.js"></script> </body>
+    <script src="treasure.js"></script>
+</body>
 </html>
