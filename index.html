@@ -72,11 +72,13 @@
         </div>
 
         <div class="admin-section">
-            <h3>プレイヤー管理</h3>
-            <input type="number" id="admin-player-hp" placeholder="プレイヤーHP" class="bank-input">
-            <button onclick="adminSetPlayerHp()">プレイヤーHP指定</button><br><br>
-            <input type="number" id="admin-player-gold" placeholder="G (所持金)" class="bank-input">
-            <button onclick="adminSetGold()">自分のG設定</button>
+            <h3>プレイヤー管理（確認・設定）</h3>
+            <input type="text" id="admin-target-player" placeholder="対象プレイヤー名(空欄で自分)" class="bank-input" style="width: 100%; margin-bottom: 10px;">
+            <button onclick="adminGetPlayerInfo()">情報確認</button>
+            <div id="admin-player-info-display" style="margin: 10px 0; font-size: 0.85em; color: #ccc; border: 1px solid #444; padding: 10px; min-height: 40px; background: #222;">指定されていません</div>
+            
+            <input type="number" id="admin-player-gold" placeholder="G (所持金)" class="bank-input" style="width: 100px;">
+            <button onclick="adminSetGold()">G設定</button>
         </div>
 
         <div class="admin-section">
@@ -89,6 +91,7 @@
 
         <div class="admin-section">
             <h3>消費者金融管理</h3>
+            <input type="text" id="admin-bank-target" placeholder="対象プレイヤー名(空欄で自分)" class="bank-input" style="width: 100%; margin-bottom: 10px;">
             <button onclick="adminResetBankDays()">日数リセット (ペナルティ回避)</button><br><br>
             <button onclick="adminClearBank()" style="background-color: #8b0000;">借金データ強制クリア</button>
         </div>

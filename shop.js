@@ -27,6 +27,10 @@ async function init() {
         document.getElementById("player-gold").innerText = data.user.gold;
         playerInventory = data.user.inventory || {}; 
         
+        if (typeof bankState !== 'undefined') {
+            bankState = data.user.bankState || { active: false };
+        }
+        
         document.getElementById("login-container").style.display = "none";
         document.getElementById("player-info").style.display = "block";
         
@@ -51,12 +55,15 @@ async function init() {
                 if (res.success) {
                     alert(`【未受け取り報酬】\n前回受け取れなかったボス討伐報酬 ${pending} G を無事に獲得しました！`);
                     document.getElementById("player-gold").innerText = res.newGold;
-                    localStorage.removeItem('pendingReward'); // 受け取ったらリセット
+                    localStorage.removeItem('pendingReward'); 
                 }
             } catch(e) {
                 console.error("未受け取り報酬の付与に失敗しました");
             }
         }
+
+        // ★ログイン時に通知確認を実行
+        checkNotifications();
 
     } else {
         document.getElementById("login-container").style.display = "block";
@@ -126,7 +133,6 @@ async function loadShopItems() {
         const descHtml = item.desc ? item.desc.replace(/\n/g, '<br>') : '';
         const iconHtml = item.icon ? `<i class="item-icon ${item.icon}"></i>` : '';
 
-        // 所持上限がある場合は表示に追加
         let limitText = "";
         if (item.maxQty !== undefined) {
             limitText = ` <small style="color:#ffaa00;">(上限:${item.maxQty}個)</small>`;
@@ -326,14 +332,6 @@ function updateAdminShopDropdown() {
     }
 }
 
-function adminSetGold() {
-    const gold = parseInt(document.getElementById('admin-player-gold').value);
-    if (!isNaN(gold)) {
-        updateGoldLocally(gold);
-        alert(`所持Gを ${gold} に設定しました。`);
-    }
-}
-
 async function adminSetShopItem() {
     const name = document.getElementById('admin-shop-item-select').value;
     const priceStr = document.getElementById('admin-shop-price').value;
@@ -353,7 +351,6 @@ async function adminSetShopItem() {
             alert(`${name} の設定をサーバーに保存しました！`);
             document.getElementById('admin-shop-price').value = '';
             document.getElementById('admin-shop-qty').value = '';
-            // ★最新のDB情報を読み込み直す
             loadShopItems(); 
         } else {
             alert("エラー：保存に失敗しました。");
@@ -362,5 +359,100 @@ async function adminSetShopItem() {
         alert("設定する項目を入力してください。");
     }
 }
+
+async function adminGetPlayerInfo() {
+    const targetName = document.getElementById('admin-target-player').value || document.getElementById('player-name').innerText;
+    
+    const response = await fetch('/api/admin/player_info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetName: targetName })
+    });
+    
+    const result = await response.json();
+    const display = document.getElementById('admin-player-info-display');
+    
+    if (result.success) {
+        let invArr = [];
+        for (const [k, v] of Object.entries(result.inventory || {})) {
+            invArr.push(`${k}:${v}個`);
+        }
+        let invStr = invArr.length > 0 ? invArr.join(' / ') : 'なし';
+        let bankStr = (result.bankState && result.bankState.active) ? `借入: ${result.bankState.borrowed}G (残: ${result.bankState.daysLeft}日)` : 'なし';
+        
+        display.innerHTML = `
+            <strong>名前:</strong> ${targetName}<br>
+            <strong>所持金:</strong> ${result.gold} G<br>
+            <strong>借金:</strong> ${bankStr}<br>
+            <strong style="display:block; margin-top:5px;">持ち物:</strong> ${invStr}
+        `;
+    } else {
+        display.innerHTML = `<span style="color: #ff4444;">${result.message}</span>`;
+    }
+}
+
+async function adminSetGold() {
+    const gold = parseInt(document.getElementById('admin-player-gold').value);
+    const targetName = document.getElementById('admin-target-player').value || document.getElementById('player-name').innerText;
+    
+    if (isNaN(gold)) {
+        alert("設定するGを入力してください。");
+        return;
+    }
+    
+    if (targetName === document.getElementById('player-name').innerText) {
+        updateGoldLocally(gold);
+        alert(`自分の所持Gを ${gold} に設定しました。`);
+    } else {
+        const response = await fetch('/api/admin/set_gold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetName: targetName, gold: gold })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(`${targetName} の所持Gを ${gold} に設定しました。`);
+            adminGetPlayerInfo(); 
+        } else {
+            alert("エラー: プレイヤーが見つからないか更新に失敗しました。");
+        }
+    }
+}
+
+// =========================================
+// ★新規：通知の自動確認システム
+// =========================================
+async function checkNotifications() {
+    // 未ログイン時や通信エラー時は何もしない
+    if (!document.getElementById("player-info") || document.getElementById("player-info").style.display === "none") return;
+    
+    try {
+        const res = await fetch('/api/check_notifications');
+        const data = await res.json();
+        
+        if (data.success && data.notifications && data.notifications.length > 0) {
+            // 通知メッセージを表示
+            data.notifications.forEach(msg => alert(`🎁 【ギフト到着】\n${msg}`));
+            
+            // アイテムの手持ちを最新情報で上書き
+            if (data.newInventory) {
+                playerInventory = data.newInventory;
+                
+                // 開いている画面があれば再描画してアイテム数を反映
+                if (typeof renderMainInventory === 'function' && document.getElementById("main-inventory-container").style.display !== "none") {
+                    renderMainInventory();
+                }
+                if (typeof renderInventory === 'function' && document.getElementById("shop-container").style.display !== "none") {
+                    renderInventory();
+                }
+            }
+        }
+    } catch(e) { 
+        console.error("通知チェックエラー:", e); 
+    }
+}
+
+// ★15秒ごとに自分宛の通知がないか確認する
+setInterval(checkNotifications, 15000);
 
 window.onload = init;

@@ -17,7 +17,6 @@ window.activeBurnIntervals = [];
 window.sunchaliceActive = false; 
 
 function resetAbilities() {
-    // ★修正：ローカルの燃焼タイマーだけをクリアし、サーバーから共有されているバフは絶対に消さない
     window.activeBurnIntervals.forEach(clearInterval);
     window.activeBurnIntervals = [];
 }
@@ -39,7 +38,6 @@ function executeRelicAbility(relicName, pName = "誰か") {
     if (typeof syncPlayerState === 'function') syncPlayerState();
     if (typeof renderInventory === 'function') renderInventory();
 
-    // ログも全体に送信
     logBattle(`【消費】${pName}が「${relicName}」の力を解放した！`, false);
 
     const dealBossDmg = (amount, isAoe) => {
@@ -62,7 +60,6 @@ function executeRelicAbility(relicName, pName = "誰か") {
             }
             break;
         case "サンチャリス":
-            // ★15分間 (15 * 60 * 1000) クールタイム短縮
             sendBossAction('apply_buff', 0, { sunchaliceUntil: Date.now() + 15 * 60 * 1000 }); 
             logBattle(`【効果】${pName}により、クールタイム短縮効果が発動した！(全プレイヤーの全スキルのCT30%短縮、15分間有効)`, false);
             break;
@@ -71,7 +68,6 @@ function executeRelicAbility(relicName, pName = "誰か") {
             startBurn(30, 10000, 600000); 
             break;
         case "ブラッディ":
-            // ★20分間 (20 * 60 * 1000) FBダメージ増加
             let newBonus = (window.fbBonusDamage || 0) + 100;
             sendBossAction('apply_buff', 0, { fbBonusDamage: newBonus, bloodyUntil: Date.now() + 20 * 60 * 1000 });
             logBattle(`【効果】${pName}により、全プレイヤーのファイヤーボールの威力が上昇した！（追加ダメージ: +${newBonus}、20分間有効）`, false);
@@ -150,14 +146,60 @@ function renderMainInventory() {
         } else if (relicsData.some(r => r.name === name)) {
             useBtnHtml = `<span style="font-size:0.8em; color:#aaa;">(戦闘中のみ使用可能)</span>`;
         }
+        
+        // ★追加：ギフトボタン
+        let giftBtnHtml = `<button class="use-item-btn" style="background-color: #9c27b0; margin-left: 5px; padding: 5px 10px; font-size: 0.9em;" onclick="openGiftPrompt('${name}', ${qty})">🎁 ギフト</button>`;
+
         li.innerHTML = `
             <div class="item-main">
                 <span>${iconHtml}${name} <small>(所持: ${qty}個)</small></span>
-                ${useBtnHtml}
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    ${useBtnHtml}
+                    ${giftBtnHtml}
+                </div>
             </div>
             ${descHtml ? `<div class="item-desc">${descHtml}</div>` : ''}
         `;
         list.appendChild(li);
+    }
+}
+
+// ★追加：ギフト用プロンプトと送信処理
+function openGiftPrompt(itemName, maxQty) {
+    const targetName = prompt(`【${itemName}】を誰に送りますか？\n相手のプレイヤー名を入力してください:`);
+    if (!targetName) return;
+    
+    const amountStr = prompt(`何個送りますか？ (最大 ${maxQty} 個)`);
+    if (!amountStr) return;
+    const amount = parseInt(amountStr);
+    
+    if (isNaN(amount) || amount <= 0 || amount > maxQty) {
+        alert("正しい個数を入力してください。");
+        return;
+    }
+    
+    sendGiftToServer(targetName, itemName, amount);
+}
+
+async function sendGiftToServer(targetName, itemName, amount) {
+    try {
+        const response = await fetch('/api/gift', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetName, itemName, amount })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`${targetName} に ${itemName} を ${amount}個 送りました！`);
+            playerInventory = result.newInventory;
+            renderMainInventory();
+            if (typeof renderInventory === 'function') renderInventory();
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch(e) {
+        alert("通信エラーが発生しました。");
     }
 }
 

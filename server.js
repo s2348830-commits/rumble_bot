@@ -88,7 +88,6 @@ app.get('/api/callback', async (req, res) => {
         await client.connect();
         const usersCollection = client.db('rpg_game').collection('users');
 
-        // 古い名前から新しい名前へのマイグレーション設定
         const oldNamesMap = {
             "古代の金貨": "緋石の仮面", "エルフの秘薬": "黄金のホルン", "ドワーフの鉄": "宵闇の神灯",
             "魔力結晶": "輝く白鳴琴", "星屑の砂": "血晶の棘", "竜の牙": "原初の蛇環",
@@ -98,7 +97,8 @@ app.get('/api/callback', async (req, res) => {
 
         let user = await usersCollection.findOne({ discordId: discordUser.id });
         if (!user) {
-            user = { discordId: discordUser.id, name: discordUser.username, gold: 50000, inventory: {} }; 
+            // ★ notifications 配列も初期化
+            user = { discordId: discordUser.id, name: discordUser.username, gold: 50000, inventory: {}, bankState: { active: false }, notifications: [] }; 
             await usersCollection.insertOne(user);
         } else {
             let inventoryModified = false;
@@ -120,14 +120,63 @@ app.get('/api/callback', async (req, res) => {
             user.name = discordUser.username;
         }
 
-        req.session.user = { discordId: user.discordId, name: user.name, gold: user.gold, inventory: user.inventory || {} };
-        res.redirect('/');
+        req.session.user = { 
+            discordId: user.discordId, 
+            name: user.name, 
+            gold: user.gold, 
+            inventory: user.inventory || {}, 
+            bankState: user.bankState || { active: false } 
+        };
+        req.session.save(() => {
+            res.redirect('/');
+        });
     } catch (error) { res.status(500).send("認証エラー"); }
 });
 
-app.get('/api/me', (req, res) => {
-    if (req.session.user) { res.json({ loggedIn: true, user: req.session.user }); } 
+app.get('/api/me', async (req, res) => {
+    if (req.session.user) { 
+        try {
+            await client.connect();
+            const dbUser = await client.db('rpg_game').collection('users').findOne({ discordId: req.session.user.discordId });
+            if (dbUser) {
+                req.session.user.gold = dbUser.gold;
+                req.session.user.inventory = dbUser.inventory || {};
+                req.session.user.name = dbUser.name;
+                req.session.user.bankState = dbUser.bankState || { active: false };
+            }
+            res.json({ loggedIn: true, user: req.session.user }); 
+        } catch(e) {
+            res.json({ loggedIn: true, user: req.session.user }); 
+        }
+    } 
     else { res.json({ loggedIn: false }); }
+});
+
+// ★新規：ギフトなどの通知をチェックして取得し、DBからは消去するAPI
+app.get('/api/check_notifications', async (req, res) => {
+    if (!req.session.user) return res.json({ success: false });
+    try {
+        await client.connect();
+        const dbUser = await client.db('rpg_game').collection('users').findOne({ discordId: req.session.user.discordId });
+        
+        if (dbUser && dbUser.notifications && dbUser.notifications.length > 0) {
+            // 通知があれば、空配列にしてリセット
+            await client.db('rpg_game').collection('users').updateOne(
+                { discordId: req.session.user.discordId },
+                { $set: { notifications: [] } }
+            );
+            
+            // ついでに最新のインベントリ情報も返す（アイテムが増えているため）
+            req.session.user.inventory = dbUser.inventory || {};
+            req.session.save(() => {
+                res.json({ success: true, notifications: dbUser.notifications, newInventory: dbUser.inventory });
+            });
+        } else {
+            res.json({ success: true, notifications: [] });
+        }
+    } catch(e) {
+        res.json({ success: false });
+    }
 });
 
 app.get('/api/items', async (req, res) => {
@@ -190,7 +239,9 @@ app.post('/api/buy', async (req, res) => {
             req.session.user.gold = newGold;
             req.session.user.inventory = currentInventory;
             
-            res.json({ success: true, message: `${itemNames.join(", ")} を手に入れた！`, newGold: newGold, newInventory: currentInventory });
+            req.session.save(() => {
+                res.json({ success: true, message: `${itemNames.join(", ")} を手に入れた！`, newGold: newGold, newInventory: currentInventory });
+            });
         } else {
             res.json({ success: false, message: "お金が足りないようだ..." });
         }
@@ -235,7 +286,9 @@ app.post('/api/sell', async (req, res) => {
         req.session.user.gold = newGold;
         req.session.user.inventory = newInventory;
 
-        res.json({ success: true, newGold: newGold, newInventory: newInventory });
+        req.session.save(() => {
+            res.json({ success: true, newGold: newGold, newInventory: newInventory });
+        });
     } catch (error) { res.status(500).send("DBエラー"); }
 });
 
@@ -258,7 +311,9 @@ app.post('/api/boss_reward', async (req, res) => {
             );
 
             req.session.user.gold = newGold;
-            res.json({ success: true, newGold: newGold });
+            req.session.save(() => {
+                res.json({ success: true, newGold: newGold });
+            });
         } else {
             res.json({ success: false });
         }
@@ -287,11 +342,137 @@ app.post('/api/update_player', async (req, res) => {
         req.session.user.gold = newGold;
         req.session.user.inventory = newInventory;
         
-        res.json({ success: true });
+        req.session.save(() => {
+            res.json({ success: true });
+        });
     } catch (error) { 
         console.error(error);
         res.status(500).send("DBエラー"); 
     }
+});
+
+app.post('/api/bank/sync', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false });
+    try {
+        const { bankState } = req.body;
+        await client.connect();
+        await client.db('rpg_game').collection('users').updateOne(
+            { discordId: req.session.user.discordId },
+            { $set: { bankState: bankState } }
+        );
+        req.session.user.bankState = bankState;
+        res.json({ success: true });
+    } catch(e) {
+        res.json({ success: false });
+    }
+});
+
+app.post('/api/gift', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false });
+    try {
+        const { targetName, itemName, amount } = req.body;
+        const senderId = req.session.user.discordId;
+        const senderName = req.session.user.name;
+
+        if (senderName === targetName) return res.json({ success: false, message: "自分自身には送れません。" });
+        if (amount <= 0) return res.json({ success: false, message: "1個以上指定してください。" });
+
+        await client.connect();
+        const usersCol = client.db('rpg_game').collection('users');
+
+        const sender = await usersCol.findOne({ discordId: senderId });
+        const receiver = await usersCol.findOne({ name: targetName });
+
+        if (!receiver) return res.json({ success: false, message: "指定された名前のプレイヤーが見つかりません。" });
+        if (!sender.inventory || (sender.inventory[itemName] || 0) < amount) {
+            return res.json({ success: false, message: "アイテムの所持数が足りません。" });
+        }
+
+        // 送る側から引く
+        sender.inventory[itemName] -= amount;
+        if (sender.inventory[itemName] <= 0) delete sender.inventory[itemName];
+
+        // 受け取る側に足す
+        receiver.inventory = receiver.inventory || {};
+        receiver.inventory[itemName] = (receiver.inventory[itemName] || 0) + amount;
+
+        // ★新規：受け取る側に通知メッセージを追加
+        receiver.notifications = receiver.notifications || [];
+        receiver.notifications.push(`${senderName} さんから「${itemName}」が ${amount}個 送られました！`);
+
+        await usersCol.updateOne({ _id: sender._id }, { $set: { inventory: sender.inventory } });
+        await usersCol.updateOne({ _id: receiver._id }, { $set: { inventory: receiver.inventory, notifications: receiver.notifications } });
+
+        req.session.user.inventory = sender.inventory;
+        req.session.save(() => {
+            res.json({ success: true, newInventory: sender.inventory });
+        });
+
+    } catch(e) {
+        res.json({ success: false, message: "システムエラー" });
+    }
+});
+
+// ==========================================
+// ★管理者用API（他プレイヤーの操作）
+// ==========================================
+
+app.post('/api/admin/player_info', async (req, res) => {
+    try {
+        const { targetName } = req.body;
+        await client.connect();
+        const target = await client.db('rpg_game').collection('users').findOne({ name: targetName });
+        if (target) {
+            res.json({ success: true, gold: target.gold, inventory: target.inventory, bankState: target.bankState });
+        } else {
+            res.json({ success: false, message: "プレイヤーが見つかりません" });
+        }
+    } catch(e) { res.json({ success: false, message: "通信エラー" }); }
+});
+
+app.post('/api/admin/set_gold', async (req, res) => {
+    try {
+        const { targetName, gold } = req.body;
+        await client.connect();
+        const result = await client.db('rpg_game').collection('users').updateOne(
+            { name: targetName },
+            { $set: { gold: gold } }
+        );
+        res.json({ success: result.modifiedCount > 0 });
+    } catch(e) { res.json({ success: false }); }
+});
+
+app.post('/api/admin/bank_reset', async (req, res) => {
+    try {
+        const { targetName } = req.body;
+        const todayStr = getJSTLogicalDate();
+        await client.connect();
+        const target = await client.db('rpg_game').collection('users').findOne({ name: targetName });
+        
+        if (target && target.bankState && target.bankState.active) {
+            target.bankState.lastUpdateDate = todayStr;
+            target.bankState.lastRepaymentDate = null;
+            await client.db('rpg_game').collection('users').updateOne(
+                { name: targetName },
+                { $set: { bankState: target.bankState } }
+            );
+            res.json({ success: true });
+        } else {
+            res.json({ success: false, message: "対象プレイヤーは現在借入していません。" });
+        }
+    } catch(e) { res.json({ success: false, message: "通信エラー" }); }
+});
+
+app.post('/api/admin/bank_clear', async (req, res) => {
+    try {
+        const { targetName } = req.body;
+        await client.connect();
+        const result = await client.db('rpg_game').collection('users').updateOne(
+            { name: targetName },
+            { $set: { bankState: { active: false } } }
+        );
+        res.json({ success: result.modifiedCount > 0, message: "対象プレイヤーの借金データをクリアしました。" });
+    } catch(e) { res.json({ success: false, message: "通信エラー" }); }
 });
 
 app.post('/api/admin/shop', async (req, res) => {
@@ -431,7 +612,7 @@ app.post('/api/boss/action', async (req, res) => {
 });
 
 // ==========================================
-// ★新規追加：特別市場（投資）のDBと価格変動ロジック
+// ★特別市場（投資）のDBと価格変動ロジック
 // ==========================================
 
 function getJSTLogicalDate() {
@@ -444,7 +625,6 @@ function getJSTLogicalDate() {
     return `${jstDate.getUTCFullYear()}-${String(jstDate.getUTCMonth()+1).padStart(2, '0')}-${String(jstDate.getUTCDate()).padStart(2, '0')}`;
 }
 
-// ★修正：名前を新しい12種類に変更
 const marketItemsDef = [
     { id: "m10", name: "野火の灼刃", basePrice: 15000, imgIndex: 2, posIndex: 4 },
     { id: "m5",  name: "血晶の棘", basePrice: 3000, imgIndex: 1, posIndex: 5 },
@@ -517,7 +697,6 @@ app.get('/api/market', async (req, res) => {
             }
             await db.collection('global').insertOne(state);
         } else {
-            // DB上の古い名前を最新のものに強制アップデート（DBに古い名前が残っている場合の対策）
             let needsUpdate = false;
             for (let def of marketItemsDef) {
                 if (state.items[def.id] && state.items[def.id].name !== def.name) {
@@ -583,7 +762,9 @@ app.post('/api/market/trade', async (req, res) => {
         req.session.user.gold = user.gold;
         req.session.user.inventory = inventory;
 
-        res.json({ success: true, message: action === 'buy' ? "購入しました！" : "売却しました！", newGold: user.gold, newInventory: inventory });
+        req.session.save(() => {
+            res.json({ success: true, message: action === 'buy' ? "購入しました！" : "売却しました！", newGold: user.gold, newInventory: inventory });
+        });
 
     } catch (e) {
         res.status(500).json({ success: false, message: "DBエラー" });

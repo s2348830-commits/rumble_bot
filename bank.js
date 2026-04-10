@@ -10,6 +10,17 @@ let bankState = {
     lastRepaymentDate: null 
 };
 
+// ★追加：銀行データをDBと同期する関数
+async function syncBankState() {
+    try {
+        await fetch('/api/bank/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bankState: bankState })
+        });
+    } catch(e) { console.error("銀行同期エラー:", e); }
+}
+
 function drawBankGraph(containerId, borrowed, totalRepay, days) {
     const svgWidth = "100%";
     const svgHeight = 120;
@@ -56,7 +67,6 @@ function switchBankTab(tabName) {
 function renderBankUI() {
     const area = document.getElementById('bank-content-area');
     
-    // ★修正：投資タブが選ばれたら特別市場UIをロードする
     if (currentBankTab === 'invest') {
         area.innerHTML = `
             <div id="treasure-market-container">
@@ -67,13 +77,6 @@ function renderBankUI() {
             initTreasureMarket();
         }
         return;
-    }
-
-    const savedState = localStorage.getItem('bankState');
-    if (savedState) {
-        bankState = JSON.parse(savedState);
-    } else {
-        bankState.active = false;
     }
 
     if (bankState.active) {
@@ -204,7 +207,8 @@ function borrowFromBank() {
         lastRepaymentDate: null
     };
 
-    localStorage.setItem('bankState', JSON.stringify(bankState));
+    // ★修正：DBに保存
+    syncBankState();
 
     updateGoldLocally(getCurrentGold() + borrowed);
     
@@ -243,83 +247,106 @@ function payBank() {
         } else {
             alert(`${payAmount} G を返済しました！\n残り返済回数: ${paymentsLeft}回`);
             bankState.lastUpdateDate = todayStr;
-            localStorage.setItem('bankState', JSON.stringify(bankState));
+            syncBankState();
             renderBankUI();
         }
     }
 }
 
 function clearBankState() {
-    bankState.active = false;
-    localStorage.removeItem('bankState');
+    bankState = { active: false };
+    syncBankState();
     renderBankUI();
 }
 
 function checkBankPenalties() {
-    const savedState = localStorage.getItem('bankState');
-    if (!savedState) return;
-
-    let state = JSON.parse(savedState);
-    if (!state.active) return;
+    if (!bankState || !bankState.active) return;
 
     const todayStr = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
     
-    if (state.lastUpdateDate !== todayStr) {
-        const lastDate = new Date(state.lastUpdateDate);
+    if (bankState.lastUpdateDate !== todayStr) {
+        const lastDate = new Date(bankState.lastUpdateDate);
         const today = new Date(todayStr);
         const diffDays = Math.round(Math.abs(today - lastDate) / (1000 * 60 * 60 * 24)); 
         
         if (diffDays > 0) {
-            state.daysLeft -= diffDays;
+            bankState.daysLeft -= diffDays;
 
-            if (state.daysLeft < 0) {
+            if (bankState.daysLeft < 0) {
                 let currentGold = getCurrentGold();
                 let penaltyAmount = 0;
 
-                if (state.type === 'lump') {
-                    penaltyAmount = Math.floor(state.borrowed * 1.5);
+                if (bankState.type === 'lump') {
+                    penaltyAmount = Math.floor(bankState.borrowed * 1.5);
                     alert(`【消費者金融】\n返済期限が過ぎました！\nペナルティとして ${penaltyAmount} G が強制引き落としされます。`);
                 } else {
-                    penaltyAmount = state.borrowed;
+                    penaltyAmount = bankState.borrowed;
                     alert(`【消費者金融】\n分割返済が期限内に完了しませんでした！\nペナルティとして貸付額 ${penaltyAmount} G が強制引き落としされます。`);
                 }
 
                 currentGold -= penaltyAmount;
                 updateGoldLocally(currentGold);
                 
-                localStorage.removeItem('bankState');
-                bankState.active = false;
+                bankState = { active: false };
+                syncBankState();
 
             } else {
-                state.lastUpdateDate = todayStr;
-                localStorage.setItem('bankState', JSON.stringify(state));
-                bankState = state;
+                bankState.lastUpdateDate = todayStr;
+                syncBankState();
             }
         }
     }
 }
 
-function adminResetBankDays() {
-    const savedState = localStorage.getItem('bankState');
-    if (savedState) {
-        let state = JSON.parse(savedState);
-        if (state.active) {
-            state.lastUpdateDate = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
-            state.lastRepaymentDate = null;
-            localStorage.setItem('bankState', JSON.stringify(state));
-            alert("消費者金融の経過日数をリセットし、ペナルティを回避・本日の返済を可能にしました。");
+// ★追加：他人の借金リセット
+async function adminResetBankDays() {
+    const targetName = document.getElementById('admin-bank-target').value || document.getElementById('player-name').innerText;
+    
+    if (targetName === document.getElementById('player-name').innerText) {
+        if (bankState.active) {
+            bankState.lastUpdateDate = typeof getLogicalDateString === 'function' ? getLogicalDateString() : new Date().toDateString();
+            bankState.lastRepaymentDate = null;
+            syncBankState();
+            alert("自分の消費者金融の経過日数をリセットしました。");
             renderBankUI();
         } else {
             alert("現在借入していません。");
         }
     } else {
-        alert("現在借入していません。");
+        const res = await fetch('/api/admin/bank_reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetName: targetName })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`${targetName} の借金日数をリセットしました。`);
+        } else {
+            alert(data.message || "エラーが発生しました。");
+        }
     }
 }
 
-function adminClearBank() {
-    if (confirm("本当に借金データを強制的にクリアしますか？")) {
+// ★追加：他人の借金クリア
+async function adminClearBank() {
+    const targetName = document.getElementById('admin-bank-target').value || document.getElementById('player-name').innerText;
+    
+    if (!confirm(`本当に ${targetName} の借金データを強制クリアしますか？`)) return;
+
+    if (targetName === document.getElementById('player-name').innerText) {
         clearBankState();
-        alert("借金データをクリアしました。");
+        alert("自分の借金データをクリアしました。");
+    } else {
+        const res = await fetch('/api/admin/bank_clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetName: targetName })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`${targetName} の借金データを強制クリアしました。`);
+        } else {
+            alert(data.message || "エラーが発生しました。");
+        }
     }
 }
