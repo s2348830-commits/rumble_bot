@@ -381,13 +381,17 @@ button:hover { background-color: #666; }
     position: absolute;
 }
 
-.relic-wrapper { top: 0; left: 140px; }
-.accel-wrapper { top: 60px; left: 60px; }
-.shield-wrapper { bottom: 20px; left: 20px; }
-.fireball-wrapper { bottom: 0px; left: 130px; }
+/* ★指定レイアウト通りに再配置 */
+.shield-wrapper { bottom: 10px; left: 10px; }
+.accel-wrapper { bottom: 70px; left: 70px; }
+.fireball-wrapper { bottom: 10px; left: 140px; }
+.relic-wrapper { bottom: 10px; left: 260px; }
+.ice-wrapper { bottom: 120px; left: 180px; }
+.fog-wrapper { bottom: 170px; left: 240px; }
 
+/* ★新しい attack.jpg に変更 */
 .skill-btn {
-    background-image: url('image/attack.png'); 
+    background-image: url('image/attack.jpg'); 
     background-size: 300% 200%;
     background-color: transparent;
     border: none; 
@@ -400,15 +404,17 @@ button:hover { background-color: #666; }
 
 .skill-btn:active { transform: scale(0.95); }
 
-/* ★修正：クールタイム中などの使用不可状態の表示 */
 .skill-btn:disabled {
     filter: grayscale(100%) brightness(30%) sepia(100%) hue-rotate(180deg) drop-shadow(0 4px 6px rgba(0,0,0,0.5));
     cursor: not-allowed;
 }
 
+/* ★新しいスプライトの座標指定 */
 .btn-fireball { width: 100px; height: 100px; background-position: 0% 0%; }
-.btn-shield { width: 55px; height: 55px; background-position: 50% 0%; }
-.btn-accel { width: 55px; height: 55px; background-position: 100% 0%; }
+.btn-shield   { width: 55px; height: 55px; background-position: 50% 0%; }
+.btn-accel    { width: 55px; height: 55px; background-position: 100% 0%; }
+.btn-ice      { width: 55px; height: 55px; background-position: 0% 100%; }
+.btn-fog      { width: 55px; height: 55px; background-position: 50% 100%; }
 
 .btn-relic {
     width: 70px;
@@ -417,15 +423,20 @@ button:hover { background-color: #666; }
     background-size: 300% 300%;
 }
 
+/* ★切り替えボタンも新しい画像に対応 */
 .btn-return {
     position: absolute;
     bottom: -5px;
     right: -10px;
     width: 35px;
     height: 35px;
-    background-image: url('image/attack.png');
-    background-position: 50% 100%;
+    background-image: url('image/attack.jpg');
+    background-size: 300% 200%;
+    background-position: 100% 100%;
     z-index: 5;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
 }
 
 .skill-label {

@@ -313,7 +313,8 @@ let globalBossState = {
     logs: [],
     buffs: {
         sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
-        playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
+        playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
+        iceFrozenUntil: 0, fogActiveUntil: 0 // ★新規追加：氷と霧の共有ステータス
     }
 };
 let isGlobalStateLoaded = false;
@@ -383,7 +384,8 @@ app.post('/api/boss/action', async (req, res) => {
                 globalBossState.logs = [];
                 globalBossState.buffs = {
                     sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
-                    playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
+                    playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
+                    iceFrozenUntil: 0, fogActiveUntil: 0 // ★リセット処理にも追加
                 };
             }
         } else if (type === 'unlock_days') {
