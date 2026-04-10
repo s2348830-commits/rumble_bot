@@ -43,7 +43,6 @@ let uiUpdateIntervalId = null;
 let freezeTimeoutId = null;
 let currentRelicIndex = 0; 
 
-// 10時開始用の待機フラグ
 let waitIntervalId = null;
 let waitingForStart = false;
 let bossSyncInterval = null; 
@@ -74,8 +73,32 @@ async function sendBossAction(type, amount, data = null) {
             }
             if (res.state.hasRevived && !bossData.hasRevived) {
                 bossData.hasRevived = true;
-                logBattle("【蘇生】ボスが復活した！", true);
             }
+
+            // ★ 全体のログを同期
+            if (res.state.logs) {
+                const logBox = document.getElementById('battle-log');
+                const isBottom = logBox.scrollHeight - logBox.clientHeight <= logBox.scrollTop + 5;
+                logBox.innerHTML = "";
+                res.state.logs.forEach(msg => {
+                    const p = document.createElement('p');
+                    p.style.margin = "4px 0";
+                    p.innerText = `> ${msg}`;
+                    logBox.appendChild(p);
+                });
+                if (isBottom) logBox.scrollTop = logBox.scrollHeight;
+            }
+
+            // ★ 全体のバフ（聖遺物の効果）を同期
+            if (res.state.buffs) {
+                const now = Date.now();
+                window.sunchaliceActive = res.state.buffs.sunchaliceUntil > now;
+                window.fbBonusDamage = res.state.buffs.fbBonusDamage;
+                window.crescentPercent = res.state.buffs.crescentPercent;
+                playerShieldUntil = res.state.buffs.playerShieldUntil;
+                bossData.evasion = res.state.buffs.bossEvasion || 0;
+            }
+
             updateBossUI();
         }
     } catch(e) {}
@@ -118,7 +141,8 @@ async function initBossState(dayIndex = 5) {
         playerMaxHp: 0,
         participants: 0,
         isDefeated: false,
-        hasRevived: false
+        hasRevived: false,
+        resetBuffs: true // 新しい日にリセット
     };
     await sendBossAction('set_state', 0, doc);
 }
@@ -156,7 +180,6 @@ async function loadBossState(dayIndex) {
     } catch(e) { }
 }
 
-// ----------------------------------------
 function clearTimers() {
     if (bossAttackIntervalId) clearInterval(bossAttackIntervalId);
     if (bossPassiveIntervalId) clearInterval(bossPassiveIntervalId);
@@ -204,12 +227,8 @@ async function startBoss(dayIndex) {
     } 
     else if (hasJoined) {
         document.getElementById('join-boss-overlay').style.display = 'none';
-        
-        // ★修正：既に参加済みならすぐポーリング（同期）開始
         if(!bossSyncInterval) {
-            bossSyncInterval = setInterval(() => {
-                sendBossAction('poll', 0);
-            }, 2000);
+            bossSyncInterval = setInterval(() => { sendBossAction('poll', 0); }, 2000);
         }
         checkAndStartBattle();
     } 
@@ -221,7 +240,6 @@ async function startBoss(dayIndex) {
     }
 
     updateBossUI();
-    if (battleLogs.length === 0) logBattle(`凶悪な ${bossData.name} が現れた！`, true);
 }
 
 function joinBoss() {
@@ -234,17 +252,13 @@ function joinBoss() {
     document.getElementById('join-boss-overlay').style.display = 'none';
     
     const pName = document.getElementById("player-name").innerText;
-    logBattle(`${pName} が戦闘に参加した！`, true);
+    logBattle(`${pName} が戦闘に参加した！`, false); // ★全員に通知
     
     sendBossAction('join', 0); 
     
-    // ★修正：参加した瞬間にポーリング（同期）開始
     if(!bossSyncInterval) {
-        bossSyncInterval = setInterval(() => {
-            sendBossAction('poll', 0);
-        }, 2000);
+        bossSyncInterval = setInterval(() => { sendBossAction('poll', 0); }, 2000);
     }
-    
     checkAndStartBattle();
 }
 
@@ -293,14 +307,21 @@ function returnToMenuFromBattle() {
     document.getElementById('main-menu').style.display = 'block';
 }
 
-function logBattle(message, dontSave = false) {
-    const logBox = document.getElementById('battle-log');
-    const p = document.createElement('p');
-    p.style.margin = "4px 0";
-    p.innerText = `> ${message}`;
-    logBox.appendChild(p);
-    logBox.scrollTop = logBox.scrollHeight; 
-    battleLogs.push(message);
+// ★修正：ログの全体送信対応 (isLocalOnlyで自分だけの表示かを分ける)
+function logBattle(message, isLocalOnly = false) {
+    if (isLocalOnly) {
+        const logBox = document.getElementById('battle-log');
+        const isBottom = logBox.scrollHeight - logBox.clientHeight <= logBox.scrollTop + 5;
+        const p = document.createElement('p');
+        p.style.margin = "4px 0";
+        p.innerText = `> ${message}`;
+        logBox.appendChild(p);
+        if (isBottom) logBox.scrollTop = logBox.scrollHeight; 
+    } else {
+        if (typeof sendBossAction === 'function') {
+            sendBossAction('add_log', 0, { message: message });
+        }
+    }
 }
 
 function updateBossUI() {
@@ -486,10 +507,9 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
         if (reason === "電撃" && bossData.dayIndex === 4) finalDmg = Math.floor(amount * 0.7); 
     }
 
-    // ★修正：通常攻撃判定をサーバーに送る
     sendBossAction('damage_player', finalDmg, { isNormalAttack: isNormalAttack });
     if (isNormalAttack) {
-        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true);
+        logBattle(`プレイヤー全体に ${finalDmg} のダメージ！`, true); // 多重送信を防ぐためローカルのみ
     }
 }
 
@@ -529,7 +549,7 @@ function bossAttackLoop() {
         if (typeof window.activeBurnIntervals !== 'undefined' && window.activeBurnIntervals.length > 0) {
             logBattle("【能力発動】ボスは自身にかかっているデバフ(燃焼など)を解除した！", true);
             if(typeof resetAbilities === 'function') resetAbilities();
-            bossData.evasion = 0; 
+            sendBossAction('apply_buff', 0, { bossEvasion: 0 }); // 共有回避率もリセット
         }
     }
 
@@ -563,44 +583,48 @@ function useSkill(skillType) {
     if (playerFrozen || bossData.isDefeated || bossData.playerCurrentHp <= 0 || !hasJoined || waitingForStart) return;
     if (Date.now() < skillCooldowns[skillType]) return;
 
+    // ★ スキル名と使用者を取得
+    const pName = document.getElementById("player-name").innerText;
+
     if (skillType === 'fireball') {
         let baseDamage = 50; 
         if(typeof window.fbBonusDamage !== 'undefined') baseDamage += window.fbBonusDamage;
-        window.dealDamageToBoss(baseDamage, false, 'fireball', 'ファイヤーボール');
+        window.dealDamageToBoss(baseDamage, false, 'fireball', 'ファイヤーボール', pName);
         setSkillCooldown('fireball', 1);
     } 
     else if (skillType === 'shield') {
         playerShieldUntil = Date.now() + 15 * 60 * 1000;
-        logBattle("【シールド】を展開した！（15分間、ボスの通常攻撃を20%軽減）", true);
+        sendBossAction('apply_buff', 0, { playerShieldUntil: playerShieldUntil }); // 全体共有
+        logBattle(`【${pName}のシールド！】展開した！（15分間、ボスの通常攻撃を20%軽減）`, false);
         setSkillCooldown('shield', 1);
         updateSkillCooldownUI(); 
     } 
     else if (skillType === 'accel') {
         let dmg = bossData.participants * 200;
-        window.dealDamageToBoss(dmg, false, 'accel', '集団加速');
+        window.dealDamageToBoss(dmg, false, 'accel', '集団加速', pName);
         setSkillCooldown('accel', 20);
     } 
     else if (skillType === 'relic') {
         const relicName = relicsData[currentRelicIndex].name;
         if (typeof executeRelicAbility === 'function') {
-            executeRelicAbility(relicName);
+            executeRelicAbility(relicName, pName);
         }
         setSkillCooldown('relic', 10);
     }
 }
 
-window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
+window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName, pName = "誰か") {
     if (bossData.isDefeated) return 0;
     let amount = baseAmount;
     const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
 
     if (bossData.dayIndex === 0) {
         if (hpPercent >= 0.5 && (type === 'fireball' || type === 'accel')) {
-            logBattle(`【無効化】日曜ボスの能力により ${skillName} は無効化された！`, true);
+            logBattle(`【無効化】日曜ボスの能力により ${pName} の ${skillName} は無効化された！`, false);
             return 0;
         }
         if (hpPercent <= 0.5 && type === 'relic') {
-            logBattle(`【無効化】日曜ボスの能力により聖遺物のダメージが無効化された！`, true);
+            logBattle(`【無効化】日曜ボスの能力により ${pName} の 聖遺物のダメージが無効化された！`, false);
             return 0;
         }
     }
@@ -617,7 +641,7 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
     }
 
     if (bossData.evasion > 0 && Math.random() < (bossData.evasion / 100)) {
-        logBattle(`攻撃をかわされた！（ボスの回避率: ${bossData.evasion}%）`, true);
+        logBattle(`${pName} の攻撃をかわされた！（ボスの回避率: ${bossData.evasion}%）`, false);
         return 0;
     }
 
@@ -628,7 +652,7 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         if (aliveClones.length > 0) {
             let targetClone = aliveClones[Math.floor(Math.random() * aliveClones.length)];
             targetClone.currentHp -= amount;
-            logBattle(`【挑発】分身体が攻撃を身代わりした！ 分身に ${amount} ダメージ！`, true);
+            logBattle(`【挑発】分身体が ${pName} の攻撃を身代わりした！ 分身に ${amount} ダメージ！`, false);
             updateBossUI();
             return amount;
         }
@@ -654,14 +678,14 @@ window.dealDamageToBoss = function(baseAmount, isAoe, type, skillName) {
         }
         amount = remainingDamage;
         if (amount <= 0) {
-            logBattle(`【吸収】攻撃はボスのシールドに完全に防がれた！`, true);
+            logBattle(`【吸収】${pName} の攻撃はボスのシールドに完全に防がれた！`, false);
             updateBossUI();
             return 0;
         }
     }
 
     sendBossAction('damage_boss', amount);
-    logBattle(`【${skillName}】 本体に ${amount} のダメージ！`, true);
+    logBattle(`【${pName}の${skillName}！】 本体に ${amount} のダメージ！`, false); // 全体送信
     
     return amount;
 };
@@ -670,23 +694,23 @@ function checkBossPhase() {
     const hpPercent = bossData.maxHp > 0 ? bossData.currentHp / bossData.maxHp : 0;
 
     if (bossData.dayIndex === 1 && hpPercent <= 0.5 && bossData.evasion < 40) {
-        bossData.evasion = 40;
+        sendBossAction('apply_buff', 0, { bossEvasion: 40 });
         logBattle("【能力発動】潜淵の主の回避率が40%にUP！", true);
     }
     if (bossData.dayIndex === 6 && bossData.evasion < 60) {
-        bossData.evasion = 60;
+        sendBossAction('apply_buff', 0, { bossEvasion: 60 });
     }
     if (bossData.dayIndex === 5 && hpPercent <= 0.6 && !bossData.shieldActive) {
         bossData.shieldActive = true;
         logBattle("【能力発動】ギルドボスがシールドを展開！（被ダメージ30%カット）", true);
     }
     if (bossData.dayIndex === 5 && hpPercent <= 0.3 && bossData.evasionIntervalId === null) {
-        bossData.evasion += 20;
-        logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion}%）`, true);
+        sendBossAction('apply_buff', 0, { bossEvasion: bossData.evasion + 20 });
+        logBattle(`【バフ】ボスの回避率が20%アップ！（現在: ${bossData.evasion + 20}%）`, true);
         bossData.evasionIntervalId = setInterval(() => {
             if (bossData.isDefeated) return clearInterval(bossData.evasionIntervalId);
-            bossData.evasion += 20;
-            logBattle(`【バフ】ボスの回避率がさらに20%アップ！（現在: ${bossData.evasion}%）`, true);
+            sendBossAction('apply_buff', 0, { bossEvasion: bossData.evasion + 20 });
+            logBattle(`【バフ】ボスの回避率がさらに20%アップ！（現在: ${bossData.evasion + 20}%）`, true);
         }, 600000); 
     }
 }

@@ -290,12 +290,17 @@ app.post('/api/admin/shop', async (req, res) => {
 });
 
 // ==========================================
-// ★修正：グローバル状態をメモリで管理して競合と多重実行を防ぐ
+// ★修正：共有状態（ログとバフ）を追加
 // ==========================================
 let globalBossState = {
     dateStr: "", dayIndex: 5, bossHp: 1020000, bossMaxHp: 1020000, 
     playerHp: 0, playerMaxHp: 0, participants: 0, isDefeated: false, hasRevived: false,
-    unlockedDaysData: {} 
+    unlockedDaysData: {},
+    logs: [],
+    buffs: {
+        sunchaliceUntil: 0, fbBonusDamage: 0, crescentPercent: 5.0,
+        playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
+    }
 };
 let isGlobalStateLoaded = false;
 let lastBossHealTime = 0;
@@ -342,17 +347,14 @@ app.post('/api/boss/action', async (req, res) => {
             }
         } else if (type === 'damage_player') {
             if (data && data.isNormalAttack) {
-                // 通常攻撃は10秒(9秒マージン)に1回しか通さない（多重攻撃防止）
                 if (now - lastBossAttackTime > 9000) {
                     globalBossState.playerHp = Math.max(0, globalBossState.playerHp - amount);
                     lastBossAttackTime = now;
                 }
             } else {
-                // 燃焼や電撃は個人のデバフなのでそのまま通す
                 globalBossState.playerHp = Math.max(0, globalBossState.playerHp - amount);
             }
         } else if (type === 'heal_boss') {
-            // 自己再生は1秒(900msマージン)に1回しか通さない（多重回復防止）
             if (now - lastBossHealTime > 900) {
                 globalBossState.bossHp = Math.min(globalBossState.bossMaxHp || 1020000, globalBossState.bossHp + amount);
                 lastBossHealTime = now;
@@ -363,11 +365,27 @@ app.post('/api/boss/action', async (req, res) => {
             globalBossState.playerHp += 1000000;
         } else if (type === 'set_state') {
             globalBossState = { ...globalBossState, ...data }; 
+            // 日を跨いでリセットされる場合などにバフ・ログもクリアする
+            if (data.resetBuffs) {
+                globalBossState.logs = [];
+                globalBossState.buffs = {
+                    sunchaliceUntil: 0, fbBonusDamage: 0, crescentPercent: 5.0,
+                    playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false
+                };
+            }
         } else if (type === 'unlock_days') {
             globalBossState.unlockedDaysData = data;
-        } 
+        } else if (type === 'add_log') {
+            // ★新規：ログの追加
+            if (data && data.message) {
+                globalBossState.logs.push(data.message);
+                if (globalBossState.logs.length > 50) globalBossState.logs.shift(); // 50件まで保持
+            }
+        } else if (type === 'apply_buff') {
+            // ★新規：バフの適用
+            globalBossState.buffs = { ...globalBossState.buffs, ...data };
+        }
         
-        // 非同期でDBへ保存
         db.collection('global').updateOne({ _id: 'boss_state' }, { $set: globalBossState }, { upsert: true }).catch(console.error);
         
         res.json({ success: true, state: globalBossState });
