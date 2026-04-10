@@ -370,7 +370,8 @@ button:hover { background-color: #666; }
 .attack-ui-container {
     position: relative;
     width: 350px;
-    height: 250px;
+    /* ★修正：アーチ状の配置に合わせ、上に少しスペースを確保 */
+    height: 280px; 
     margin: 20px auto;
 }
 
@@ -381,17 +382,18 @@ button:hover { background-color: #666; }
     position: absolute;
 }
 
-/* ★指定レイアウト通りに再配置 */
-.shield-wrapper { bottom: 10px; left: 10px; }
-.accel-wrapper { bottom: 70px; left: 70px; }
-.fireball-wrapper { bottom: 10px; left: 140px; }
-.relic-wrapper { bottom: 10px; left: 260px; }
-.ice-wrapper { bottom: 120px; left: 180px; }
-.fog-wrapper { bottom: 170px; left: 240px; }
+/* ★修正：画像を元に、ファイヤーボールを円状に囲うレイアウトに再配置 */
+.fireball-wrapper { bottom: 10px; left: 150px; } /* 右下に大きく配置 */
+.accel-wrapper    { bottom: 10px; left: 60px; }  /* FBの左下 */
+.shield-wrapper   { bottom: 85px; left: 40px; }  /* FBの左中央 */
+.ice-wrapper      { bottom: 160px; left: 75px; } /* FBの左上 */
+.fog-wrapper      { bottom: 200px; left: 145px; } /* FBの真上 */
 
-/* ★新しい attack.jpg に変更 */
+/* 聖遺物ボタンは右側の邪魔にならない場所に配置 */
+.relic-wrapper    { bottom: 130px; left: 260px; } 
+
 .skill-btn {
-    background-image: url('image/attack.jpg'); 
+    background-image: url('image/attack.png'); 
     background-size: 300% 200%;
     background-color: transparent;
     border: none; 
@@ -404,12 +406,13 @@ button:hover { background-color: #666; }
 
 .skill-btn:active { transform: scale(0.95); }
 
+/* クールタイム中などの使用不可状態の表示 */
 .skill-btn:disabled {
     filter: grayscale(100%) brightness(30%) sepia(100%) hue-rotate(180deg) drop-shadow(0 4px 6px rgba(0,0,0,0.5));
     cursor: not-allowed;
 }
 
-/* ★新しいスプライトの座標指定 */
+/* 新しいスプライトの座標指定 */
 .btn-fireball { width: 100px; height: 100px; background-position: 0% 0%; }
 .btn-shield   { width: 55px; height: 55px; background-position: 50% 0%; }
 .btn-accel    { width: 55px; height: 55px; background-position: 100% 0%; }
@@ -423,14 +426,14 @@ button:hover { background-color: #666; }
     background-size: 300% 300%;
 }
 
-/* ★切り替えボタンも新しい画像に対応 */
+/* 切り替えボタンも新しい画像に対応 */
 .btn-return {
     position: absolute;
     bottom: -5px;
     right: -10px;
     width: 35px;
     height: 35px;
-    background-image: url('image/attack.jpg');
+    background-image: url('image/attack.png');
     background-size: 300% 200%;
     background-position: 100% 100%;
     z-index: 5;
