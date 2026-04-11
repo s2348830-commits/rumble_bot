@@ -398,7 +398,7 @@ button:hover { background-color: #666; }
 .relic-wrapper    { bottom: 130px; left: 260px; } 
 
 .skill-btn {
-    background-image: url('image/attack.jpg'); 
+    background-image: url('image/attack.png'); 
     background-size: 300% 200%;
     background-color: transparent;
     border: none; 
@@ -435,7 +435,7 @@ button:hover { background-color: #666; }
     right: -10px;
     width: 35px;
     height: 35px;
-    background-image: url('image/attack.jpg');
+    background-image: url('image/attack.png');
     background-size: 300% 200%;
     background-position: 100% 100%;
     z-index: 5;
