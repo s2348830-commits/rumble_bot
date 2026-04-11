@@ -1,11 +1,11 @@
 const BOSS_TEMPLATES = {
-    1: { name: "潜淵の主", maxHp: 1050000, image: "image/boss/月曜.png", defeatImage: "image/boss/月曜2.png", reward: 18000 },
-    2: { name: "邪地ノ炎魔", maxHp: 1080000, image: "image/boss/火曜.png", defeatImage: "image/boss/火曜2.png", reward: 20000 },
-    3: { name: "突風の鹿鬼", maxHp: 1100000, image: "image/boss/水曜.png", defeatImage: "image/boss/水曜2.png", reward: 17000 },
-    4: { name: "砂の蛇王", maxHp: 1150000, image: "image/boss/木曜.png", defeatImage: "image/boss/木曜2.png", reward: 30000 },
-    5: { name: "ギルドボス", maxHp: 1020000, image: "image/boss/金曜.png", defeatImage: "image/boss/金曜2.png", reward: 15000 },
-    6: { name: "福臨", maxHp: 1020000, image: "image/boss/土曜.png", defeatImage: "image/boss/土曜2.png", reward: 35000 },
-    0: { name: "日曜の支配者", maxHp: 1200000, image: "image/boss/日曜.png", defeatImage: "image/boss/日曜2.png", reward: 40000 }
+    1: { name: "潜淵の主", maxHp: 1050000, image: "image/boss/月曜.png", defeatImage: "image/boss/月曜2.png", reward: 18000, desc: "【特徴】<br>高い回避率を持つ水棲のボス。<br><br>【パッシブ能力】<br>・毎秒HPを10回復する。<br>・HPが50%以下になると、回避率が40%に上昇する。<br>・聖遺物のダメージを軽減する。<br><br>【特殊攻撃】<br>・30%の確率で自身のデバフ(燃焼など)を解除する。" },
+    2: { name: "邪地ノ炎魔", maxHp: 1080000, image: "image/boss/火曜.png", defeatImage: "image/boss/火曜2.png", reward: 20000, desc: "【特徴】<br>炎を操る強力なボス。<br><br>【パッシブ能力】<br>・プレイヤーに燃焼が付与されている場合、5秒ごとに10の追加ダメージ。<br>・HPが50%以下になると、受けるダメージを軽減する。<br>・ファイヤーボールと集団加速のクールタイムが1.5倍になる。<br><br>【特殊攻撃】<br>・通常攻撃時、プレイヤー全体に1時間の燃焼を付与する。<br>・10%の確率で自身のデバフを解除する。" },
+    3: { name: "突風の鹿鬼", maxHp: 1100000, image: "image/boss/水曜.png", defeatImage: "image/boss/水曜2.png", reward: 17000, desc: "【特徴】<br>回復能力に長けた風のボス。<br><br>【パッシブ能力】<br>・毎秒HPを回復する(HP50%以上で30、50%未満で40回復)。" },
+    4: { name: "砂の蛇王", maxHp: 1150000, image: "image/boss/木曜.png", defeatImage: "image/boss/木曜2.png", reward: 30000, desc: "【特徴】<br>分身と電撃を操る厄介なボス。<br><br>【パッシブ能力】<br>・6時間ごとに、ボスの攻撃を肩代わりする「分身」を2体召喚する。<br>・プレイヤーが電撃状態の場合、麻痺人数×500の大ダメージを与える。<br><br>【特殊攻撃】<br>・30%の確率で「雷連鎖」を発動し、プレイヤーに電撃を付与して10秒間行動不能にする。<br>・30%の確率で自身のデバフを解除する。" },
+    5: { name: "ギルドボス", maxHp: 1020000, image: "image/boss/金曜.png", defeatImage: "image/boss/金曜2.png", reward: 15000, desc: "【特徴】<br>氷を操り、防御を固めるボス。<br><br>【パッシブ能力】<br>・HPが60%以下になるとシールドを展開し、受けるダメージを30%カットする。<br>・HPが30%以下になると10分ごとに回避率が最大20%まで上昇する。<br><br>【特殊攻撃】<br>・40%の確率で「冷気」を放ち、プレイヤーを15秒間凍結(行動不能)にする。" },
+    6: { name: "福臨", maxHp: 1020000, image: "image/boss/土曜.png", defeatImage: "image/boss/土曜2.png", reward: 35000, desc: "【特徴】<br>プレイヤーの能力を封じるボス。<br><br>【パッシブ能力】<br>・1時間ごとに、ランダムな聖遺物スキルを3つ、1時間封印する。<br>・回避率が最大60%まで上昇する。<br>・HPが50%以下の時、聖遺物から受けるダメージを軽減する。<br><br>【特殊攻撃】<br>・10%の確率で自身のデバフを解除する。" },
+    0: { name: "日曜の支配者", maxHp: 1200000, image: "image/boss/日曜.png", defeatImage: "image/boss/日曜2.png", reward: 40000, desc: "【特徴】<br>圧倒的な力を持つ絶対者。<br><br>【パッシブ能力】<br>・HPが50%以上の時、ファイヤーボールと集団加速を無効化する。<br>・HPが50%以下の時、聖遺物によるダメージを無効化する。<br>・HPが50%以下の時、受けたダメージの45%を吸収する特殊なシールドを展開する。<br><br>【特殊攻撃】<br>・60%という高い確率で自身のデバフを解除する。" }
 };
 
 let bossData = {
@@ -28,7 +28,6 @@ let bossData = {
     absorbShields: [],
     sealedRelics: [],
     lastSealTime: 0,
-    // ★追加：氷と霧の共有ステータス
     iceFrozenUntil: 0, 
     fogActiveUntil: 0  
 };
@@ -36,7 +35,6 @@ let bossData = {
 let playerDebuffs = { burnUntil: 0, shockCount: 0 };
 let playerShieldUntil = 0; 
 
-// ★追加：氷と霧のクールタイム(ローカル管理)
 let skillCooldowns = { 
     fireball: 0, 
     shield: 0, 
@@ -58,6 +56,22 @@ let currentRelicIndex = 0;
 let waitIntervalId = null;
 let waitingForStart = false;
 let bossSyncInterval = null; 
+
+// ★新規追加：ボスの能力を表示する関数
+function showBossInfo() {
+    if (!bossData) return;
+    const template = BOSS_TEMPLATES[bossData.dayIndex];
+    if (template) {
+        document.getElementById('boss-info-name').innerText = template.name + " の能力";
+        document.getElementById('boss-info-desc').innerHTML = template.desc;
+        document.getElementById('boss-info-modal').style.display = 'flex';
+    }
+}
+
+// ★新規追加：ボスの能力ポップアップを閉じる関数
+function closeBossInfo() {
+    document.getElementById('boss-info-modal').style.display = 'none';
+}
 
 // =========================================
 // DBと同期する通信関数群
@@ -108,7 +122,6 @@ async function sendBossAction(type, amount, data = null) {
                 playerShieldUntil = res.state.buffs.playerShieldUntil;
                 bossData.evasion = res.state.buffs.bossEvasion || 0;
                 
-                // ★バフとして氷と霧の時間を更新
                 bossData.iceFrozenUntil = res.state.buffs.iceFrozenUntil || 0;
                 bossData.fogActiveUntil = res.state.buffs.fogActiveUntil || 0;
             }
@@ -387,20 +400,19 @@ function setSkillCooldown(skill, baseSec) {
 function updateSkillCooldownUI() {
     const now = Date.now();
     
-    // ★追加：バフの色をHPバーに反映
     const hpBar = document.getElementById('player-hp-bar');
     if (hpBar) {
         if (now < bossData.fogActiveUntil) {
-            hpBar.style.backgroundColor = '#b0bec5'; // 霧（灰色）
+            hpBar.style.backgroundColor = '#b0bec5'; 
         } else if (now < playerShieldUntil) {
-            hpBar.style.backgroundColor = '#00d4ff'; // 盾（水色）
+            hpBar.style.backgroundColor = '#00d4ff'; 
         } else {
             hpBar.style.backgroundColor = '#4CAF50'; 
         }
     }
     const bossHpBar = document.getElementById('boss-hp-bar');
     if (bossHpBar) {
-        bossHpBar.style.backgroundColor = (now < bossData.iceFrozenUntil) ? '#90caf9' : '#ff4444'; // 氷で水色に
+        bossHpBar.style.backgroundColor = (now < bossData.iceFrozenUntil) ? '#90caf9' : '#ff4444'; 
     }
 
     if (!hasJoined || waitingForStart || bossData.isDefeated || bossData.playerCurrentHp <= 0) return;
@@ -413,7 +425,6 @@ function updateSkillCooldownUI() {
         return;
     }
 
-    // ★追加：氷と霧のスキルボタン判定
     ['fireball', 'shield', 'accel', 'relic', 'ice', 'fog'].forEach(skill => {
         let btn = document.querySelector(`.btn-${skill}`);
         if (btn) {
@@ -508,7 +519,6 @@ function togglePlayerFreeze(isFrozen) {
 function bossPassiveLoop() {
     if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
     
-    // ★追加：氷の効果中はボスのパッシブ行動を停止
     if (Date.now() < bossData.iceFrozenUntil) return;
 
     const now = Date.now();
@@ -565,7 +575,6 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
     const now = Date.now();
     let hasShield = (playerShieldUntil > now);
 
-    // ★追加：霧による10%回避
     if (isNormalAttack && now < bossData.fogActiveUntil && Math.random() < 0.1) {
         logBattle(`【回避】霧に紛れてボスの攻撃（${reason}）を回避した！`, true);
         return; 
@@ -586,7 +595,6 @@ function dealDamageToPlayer(amount, reason, isNormalAttack) {
 function bossAttackLoop() {
     if (bossData.isDefeated || bossData.playerCurrentHp <= 0 || bossData.participants === 0) return;
     
-    // ★追加：氷の効果中はボスの攻撃行動を停止
     if (Date.now() < bossData.iceFrozenUntil) return;
 
     logBattle(`【${bossData.name}の攻撃！】`, true);
@@ -683,14 +691,12 @@ function useSkill(skillType) {
         }
         setSkillCooldown('relic', 10);
     }
-    // ★追加：氷のスキル
     else if (skillType === 'ice') {
         bossData.iceFrozenUntil = Date.now() + 30 * 1000;
         sendBossAction('apply_buff', 0, { iceFrozenUntil: bossData.iceFrozenUntil });
         logBattle(`【氷】${pName}が氷の魔力を解き放った！敵の動きが30秒間停止する！`, false);
         setSkillCooldown('ice', 300); // 5分 = 300秒
     }
-    // ★追加：霧のスキル
     else if (skillType === 'fog') {
         bossData.fogActiveUntil = Date.now() + 5 * 60 * 1000;
         sendBossAction('apply_buff', 0, { fogActiveUntil: bossData.fogActiveUntil });

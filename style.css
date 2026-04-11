@@ -398,7 +398,7 @@ button:hover { background-color: #666; }
 .relic-wrapper    { bottom: 130px; left: 260px; } 
 
 .skill-btn {
-    background-image: url('image/attack.png'); 
+    background-image: url('image/attack.jpg'); 
     background-size: 300% 200%;
     background-color: transparent;
     border: none; 
@@ -435,7 +435,7 @@ button:hover { background-color: #666; }
     right: -10px;
     width: 35px;
     height: 35px;
-    background-image: url('image/attack.png');
+    background-image: url('image/attack.jpg');
     background-size: 300% 200%;
     background-position: 100% 100%;
     z-index: 5;
@@ -603,11 +603,12 @@ button:hover { background-color: #666; }
         max-height: 250px; /* スマホでは高さを抑える */
     }
 
-    /* スキルボタン全体をスマホ画面に合わせて縮小 */
+    /* スキルボタン全体をスマホ画面に合わせて縮小し、少し左へずらす */
     .attack-ui-container {
         transform: scale(0.85); /* 15%縮小 */
         transform-origin: top center;
         margin-bottom: -30px; /* 縮小して余った下の隙間を詰める */
+        left: -15px; /* ★スマホ版で全体を少し左にずらす */
     }
 }
 
@@ -619,6 +620,7 @@ button:hover { background-color: #666; }
     .attack-ui-container {
         transform: scale(0.75); /* さらに縮小してはみ出しを防ぐ */
         margin-bottom: -50px;
+        left: -20px; /* ★さらに少し左にずらす */
     }
     .tab-btn {
         font-size: 0.8em;

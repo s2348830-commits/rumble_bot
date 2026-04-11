@@ -52,14 +52,15 @@ async function setupDatabase() {
         await client.connect();
         const db = client.db('rpg_game');
         
+        // ★修正：$set を $setOnInsert に変更。これにより、起動時に上書きリセットされなくなります。
         for (let item of defaultItems) {
-            await db.collection('items').updateOne({ name: item.name }, { $set: item }, { upsert: true });
+            await db.collection('items').updateOne({ name: item.name }, { $setOnInsert: item }, { upsert: true });
         }
         for (let w of defaultWeapons) {
-            await db.collection('weapons').updateOne({ name: w.name }, { $set: w }, { upsert: true });
+            await db.collection('weapons').updateOne({ name: w.name }, { $setOnInsert: w }, { upsert: true });
         }
         for (let o of defaultOthers) {
-            await db.collection('others').updateOne({ name: o.name }, { $set: o }, { upsert: true });
+            await db.collection('others').updateOne({ name: o.name }, { $setOnInsert: o }, { upsert: true });
         }
     } catch (err) {
         console.error("DB初期化エラー:", err);
@@ -97,7 +98,6 @@ app.get('/api/callback', async (req, res) => {
 
         let user = await usersCollection.findOne({ discordId: discordUser.id });
         if (!user) {
-            // ★ notifications 配列も初期化
             user = { discordId: discordUser.id, name: discordUser.username, gold: 50000, inventory: {}, bankState: { active: false }, notifications: [] }; 
             await usersCollection.insertOne(user);
         } else {
@@ -152,7 +152,6 @@ app.get('/api/me', async (req, res) => {
     else { res.json({ loggedIn: false }); }
 });
 
-// ★新規：ギフトなどの通知をチェックして取得し、DBからは消去するAPI
 app.get('/api/check_notifications', async (req, res) => {
     if (!req.session.user) return res.json({ success: false });
     try {
@@ -160,13 +159,11 @@ app.get('/api/check_notifications', async (req, res) => {
         const dbUser = await client.db('rpg_game').collection('users').findOne({ discordId: req.session.user.discordId });
         
         if (dbUser && dbUser.notifications && dbUser.notifications.length > 0) {
-            // 通知があれば、空配列にしてリセット
             await client.db('rpg_game').collection('users').updateOne(
                 { discordId: req.session.user.discordId },
                 { $set: { notifications: [] } }
             );
             
-            // ついでに最新のインベントリ情報も返す（アイテムが増えているため）
             req.session.user.inventory = dbUser.inventory || {};
             req.session.save(() => {
                 res.json({ success: true, notifications: dbUser.notifications, newInventory: dbUser.inventory });
@@ -396,7 +393,7 @@ app.post('/api/gift', async (req, res) => {
         receiver.inventory = receiver.inventory || {};
         receiver.inventory[itemName] = (receiver.inventory[itemName] || 0) + amount;
 
-        // ★新規：受け取る側に通知メッセージを追加
+        // 通知メッセージを追加
         receiver.notifications = receiver.notifications || [];
         receiver.notifications.push(`${senderName} さんから「${itemName}」が ${amount}個 送られました！`);
 
