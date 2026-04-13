@@ -57,7 +57,6 @@ let waitIntervalId = null;
 let waitingForStart = false;
 let bossSyncInterval = null; 
 
-// ★新規追加：ボスの能力を表示する関数
 function showBossInfo() {
     if (!bossData) return;
     const template = BOSS_TEMPLATES[bossData.dayIndex];
@@ -68,7 +67,6 @@ function showBossInfo() {
     }
 }
 
-// ★新規追加：ボスの能力ポップアップを閉じる関数
 function closeBossInfo() {
     document.getElementById('boss-info-modal').style.display = 'none';
 }
@@ -169,6 +167,8 @@ async function initBossState(dayIndex = 5) {
         playerHp: 0,
         playerMaxHp: 0,
         participants: 0,
+        participantIds: [], // ★追加：サーバーに初期化時に伝える
+        rewardDistributed: false, // ★追加
         isDefeated: false,
         hasRevived: false,
         resetBuffs: true 
@@ -813,6 +813,7 @@ function checkBossPhase() {
     }
 }
 
+// ★修正：報酬処理の削除と、画面の最新化（fetch）
 async function defeatBoss() {
     bossData.isDefeated = true;
     clearTimers();
@@ -823,32 +824,17 @@ async function defeatBoss() {
     document.querySelectorAll('.skill-label').forEach(lbl => lbl.innerText = "討伐完了");
     
     logBattle(`見事 ${bossData.name} を討伐した！！！`, true);
-    logBattle(`討伐報酬として ${bossData.reward} G を獲得中...`, true);
+    logBattle(`※討伐報酬（${bossData.reward} G）は全参加者にサーバーから自動的に振り込まれました！`, true);
     updateBossUI();
 
+    // サーバーですでに振り込まれている最新の所持金を画面に即座に反映させるため
     try {
-        const response = await fetch('/api/boss_reward', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reward: bossData.reward })
-        });
+        const response = await fetch('/api/me');
         const result = await response.json();
-        
-        if (result.success) {
-            document.getElementById('player-gold').innerText = result.newGold;
-            logBattle(`報酬受け取り完了！現在の所持金: ${result.newGold} G`, true);
-        } else {
-            logBattle("【警告】セッション切れにより報酬が受け取れませんでした。", true);
-            let pending = parseInt(localStorage.getItem('pendingReward') || '0');
-            localStorage.setItem('pendingReward', pending + bossData.reward);
-            alert("ログインの有効期限が切れてしまったため、報酬を一時保留しました。\nページを更新（リロード）して再ログインすると自動的に付与されます！");
+        if (result.loggedIn) {
+            document.getElementById('player-gold').innerText = result.user.gold;
         }
-    } catch(e) {
-        logBattle("通信エラーにより報酬が受け取れませんでした。", true);
-        let pending = parseInt(localStorage.getItem('pendingReward') || '0');
-        localStorage.setItem('pendingReward', pending + bossData.reward);
-        alert("通信エラーが発生し、報酬を一時保留しました。\nページを更新（リロード）して再ログインすると自動的に付与されます！");
-    }
+    } catch(e) {}
 }
 
 function adminReviveBoss() {

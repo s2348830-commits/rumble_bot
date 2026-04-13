@@ -18,7 +18,6 @@ let cart = {};
 let playerInventory = {}; 
 let catalog = {}; 
 
-// ★特別アイテム（市場投資アイテム）の画像マッピング
 const specialItemIcons = {
     "緋石の仮面": "t-icon t-img1 t-pos1",
     "黄金のホルン": "t-icon t-img1 t-pos2",
@@ -59,6 +58,7 @@ async function init() {
             checkBankPenalties();
         }
 
+        // 旧システム向けの一時保留対応（今回で役目を終えますが後方互換性のため残存）
         let pending = parseInt(localStorage.getItem('pendingReward') || '0');
         if (pending > 0) {
             try {
@@ -262,7 +262,6 @@ function renderInventory() {
     let hasItemsToSell = false;
 
     for (const [name, qty] of Object.entries(playerInventory)) {
-        // ★修正：特別アイテム（投資品）は誤操作防止のため一般ショップでの売却を禁止（非表示）
         if (specialItemIcons && specialItemIcons[name]) continue;
 
         hasItemsToSell = true;
@@ -447,6 +446,7 @@ async function adminSetGold() {
     }
 }
 
+// ★修正：サーバーからの新しいゴールドを受け取り、UIに反映するように修正
 async function checkNotifications() {
     if (!document.getElementById("player-info") || document.getElementById("player-info").style.display === "none") return;
     
@@ -455,7 +455,12 @@ async function checkNotifications() {
         const data = await res.json();
         
         if (data.success && data.notifications && data.notifications.length > 0) {
-            data.notifications.forEach(msg => alert(`🎁 【ギフト到着】\n${msg}`));
+            data.notifications.forEach(msg => alert(`🎁 【通知】\n${msg}`));
+            
+            // 最新のゴールドが送られてきた場合は画面を更新
+            if (data.newGold !== undefined) {
+                document.getElementById("player-gold").innerText = data.newGold;
+            }
             
             if (data.newInventory) {
                 playerInventory = data.newInventory;

@@ -14,6 +14,11 @@ const CLIENT_SECRET = "h2HAw_NEwR5TirXfELAsFM_ohg2XR_Ed";
 const REDIRECT_URI = "https://rumble-bot-w6wv.onrender.com/api/callback";
 // ==========================================
 
+// ★追加：各ボスの報酬額をサーバー側でも定義
+const BOSS_REWARDS = { 
+    1: 18000, 2: 20000, 3: 17000, 4: 30000, 5: 15000, 6: 35000, 0: 40000 
+};
+
 app.use(express.json()); 
 app.use(express.static(__dirname));
 
@@ -52,7 +57,6 @@ async function setupDatabase() {
         await client.connect();
         const db = client.db('rpg_game');
         
-        // ★修正：$set を $setOnInsert に変更。これにより、起動時に上書きリセットされなくなります。
         for (let item of defaultItems) {
             await db.collection('items').updateOne({ name: item.name }, { $setOnInsert: item }, { upsert: true });
         }
@@ -165,8 +169,14 @@ app.get('/api/check_notifications', async (req, res) => {
             );
             
             req.session.user.inventory = dbUser.inventory || {};
+            req.session.user.gold = dbUser.gold; // ★追加: ゴールドも最新同期
             req.session.save(() => {
-                res.json({ success: true, notifications: dbUser.notifications, newInventory: dbUser.inventory });
+                res.json({ 
+                    success: true, 
+                    notifications: dbUser.notifications, 
+                    newInventory: dbUser.inventory,
+                    newGold: dbUser.gold // ★追加: フロントに最新ゴールドを返す
+                });
             });
         } else {
             res.json({ success: true, notifications: [] });
@@ -289,6 +299,7 @@ app.post('/api/sell', async (req, res) => {
     } catch (error) { res.status(500).send("DBエラー"); }
 });
 
+// ※旧システム用の予備として残していますが、自動振り込み化に伴い基本的には使われません
 app.post('/api/boss_reward', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
 
@@ -509,7 +520,9 @@ app.post('/api/admin/shop', async (req, res) => {
 // ==========================================
 let globalBossState = {
     dateStr: "", dayIndex: 5, bossHp: 1020000, bossMaxHp: 1020000, 
-    playerHp: 0, playerMaxHp: 0, participants: 0, isDefeated: false, hasRevived: false,
+    playerHp: 0, playerMaxHp: 0, participants: 0, 
+    participantIds: [], // ★追加：参加者のIDを記録
+    isDefeated: false, hasRevived: false, rewardDistributed: false, // ★追加：報酬配布済みフラグ
     unlockedDaysData: {},
     logs: [],
     buffs: {
@@ -561,6 +574,27 @@ app.post('/api/boss/action', async (req, res) => {
             } else if (globalBossState.bossHp === 0) {
                 globalBossState.isDefeated = true;
             }
+
+            // ★ 新規追加：ボス討伐時の自動報酬振り込み処理（サーバー権限でのみ実行）
+            if (globalBossState.isDefeated && !globalBossState.rewardDistributed) {
+                globalBossState.rewardDistributed = true; // 二重取り防止
+                const reward = BOSS_REWARDS[globalBossState.dayIndex] || 15000;
+
+                if (globalBossState.participantIds && globalBossState.participantIds.length > 0) {
+                    const usersCollection = db.collection('users');
+                    const msg = `【ボス討伐報酬】オフライン/戦闘中にボスが討伐されました！報酬 ${reward} G を獲得しました！`;
+
+                    // 参加者全員の所持金に直接足し、通知メッセージを入れる
+                    await usersCollection.updateMany(
+                        { discordId: { $in: globalBossState.participantIds } },
+                        {
+                            $inc: { gold: reward },
+                            $push: { notifications: msg }
+                        }
+                    );
+                }
+            }
+
         } else if (type === 'damage_player') {
             if (data && data.isNormalAttack) {
                 if (now - lastBossAttackTime > 9000) {
@@ -579,10 +613,21 @@ app.post('/api/boss/action', async (req, res) => {
             globalBossState.participants += 1;
             globalBossState.playerMaxHp += 1000000;
             globalBossState.playerHp += 1000000;
+            
+            // ★追加：参加者のDiscord IDを記録する
+            if (req.session.user) {
+                if (!globalBossState.participantIds) globalBossState.participantIds = [];
+                if (!globalBossState.participantIds.includes(req.session.user.discordId)) {
+                    globalBossState.participantIds.push(req.session.user.discordId);
+                }
+            }
+
         } else if (type === 'set_state') {
             globalBossState = { ...globalBossState, ...data }; 
             if (data.resetBuffs) {
                 globalBossState.logs = [];
+                globalBossState.participantIds = []; // ★追加：リセット時に参加者リストも空にする
+                globalBossState.rewardDistributed = false; // ★追加：配布済みフラグもリセット
                 globalBossState.buffs = {
                     sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
                     playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
