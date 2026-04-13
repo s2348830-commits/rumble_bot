@@ -838,7 +838,7 @@ async function defeatBoss() {
 }
 
 function adminReviveBoss() {
-    sendBossAction('set_state', 0, { bossHp: bossData.maxHp, isDefeated: false, hasRevived: false }).then(() => {
+    sendBossAction('set_state', 0, { bossHp: bossData.maxHp, isDefeated: false, hasRevived: false, rewardDistributed: false }).then(() => {
         alert("現在のボスを全回復して復活させました。（再度ボス画面に入ると反映されます）");
     });
 }
