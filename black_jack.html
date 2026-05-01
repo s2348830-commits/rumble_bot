@@ -364,8 +364,6 @@
         
         <!-- プレイヤー参加ボタン -->
         <button id="join-btn" class="join-btn" onclick="joinGame()">参加する</button>
-        
-        <!-- 開発用CPUボタンは削除・メニューへ戻るボタンのみ配置 -->
         <button class="debug-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-top: 20px;">◀ メニューに戻る</button>
 
         <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※5分に1回ゲームが開始されます。他のプレイヤー(人間)の参加を待ちます。</p>
@@ -401,310 +399,71 @@
     </div>
 
     <script>
-        // --- 5分おきシステム設定 ---
-        const CYCLE_TOTAL = 300; // 5分 = 300秒[cite: 26]
-        const LOBBY_TIME = 240;  // 最初の4分間をロビーでの募集時間とする[cite: 26]
-        const MAX_PLAYERS = 4;
-        const TURN_TIME_LIMIT = 10; // 各ターンの持ち時間（秒）
-
-        // --- 状態管理・サーバー同期用変数 ---
+        // --- 状態管理用変数 ---
         let balance = 0;
-        let playerInventory = {};
         let isDataLoaded = false;
-        
-        let currentPhase = 'lobby'; // 'lobby', 'playing', 'result'
-        let mainInterval = null;
-        
-        // --- ゲームデータ ---
-        let deck = [];
-        let players = [];
-        let dealer = { hand: [], score: 0 };
-        let currentPlayerIndex = 0;
-        let joinedCount = 0;
-        
-        let hasJoinedLocally = false; // 自分ひとりで複数枠を買い占めるのを防ぐ（1枠限定）[cite: 26]
-        let localPlayerId = -1;
+        let myDiscordId = null;
         let selectedChipValue = 100;
-        let currentBet = 0;
         
-        let turnTimer = 0;
-        let isDealerTurn = false;
-        let isTransitioning = false; // 思考中などはタイマーを減らさない
+        const LOBBY_TIME = 240;
+        const CYCLE_TOTAL = 300;
 
-        const suits = ['♠', '♥', '♦', '♣'];
-        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-
-        // --- サーバー連携 ---
+        // ログイン情報を取得
         async function loadUserData() {
             try {
                 const res = await fetch('/api/me');
                 const data = await res.json();
                 if (data.loggedIn) {
                     balance = data.user.gold;
-                    playerInventory = data.user.inventory || {};
+                    myDiscordId = data.user.discordId;
                     isDataLoaded = true;
-                    updateUI();
+                    document.getElementById('balance').innerText = balance.toLocaleString();
                 } else {
                     alert("ログイン情報が取得できません。メニューに戻ります。");
                     window.location.href = 'index.html';
                 }
             } catch (e) {
-                console.error("ユーザー情報の取得に失敗しました", e);
+                console.error(e);
             }
-        }
-
-        async function syncGoldToServer() {
-            if (!isDataLoaded) return;
-            try {
-                await fetch('/api/update_player', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gold: balance, inventory: playerInventory })
-                });
-            } catch(e) {
-                console.error("ゴールドの同期に失敗しました", e);
-            }
-        }
-
-        // --- ゴールドのバックアップ機能 (ページ離脱時に返還) ---
-        function refundBets() {
-            if ((currentPhase === 'lobby' || currentPhase === 'playing') && hasJoinedLocally && currentBet > 0) {
-                balance += currentBet;
-                currentBet = 0;
-                hasJoinedLocally = false;
-                const data = JSON.stringify({ gold: balance, inventory: playerInventory });
-                navigator.sendBeacon('/api/update_player', new Blob([data], { type: 'application/json' }));
-            }
-        }
-
-        function returnToMenu() {
-            refundBets();
-            window.location.href = 'index.html';
-        }
-
-        window.addEventListener('beforeunload', refundBets);
-
-        function updateUI() {
-            const balEl = document.getElementById('balance');
-            if(balEl) balEl.innerText = balance.toLocaleString();
-            document.getElementById('lobby-count').innerText = joinedCount;
         }
 
         // --- 起動時処理 ---
         window.onload = () => {
             loadUserData();
-            
-            const now = Math.floor(Date.now() / 1000);
-            const cycleTime = now % CYCLE_TOTAL;
-            
-            // ページを開いたタイミングが、ちょうどゲーム中(240秒〜300秒)だった場合の処理
-            if (cycleTime >= LOBBY_TIME) {
-                currentPhase = 'result';
-                document.getElementById('lobby-screen').className = 'screen';
-                document.getElementById('game-screen').className = 'screen active';
-                document.getElementById('turn-info').innerText = "現在ゲーム進行中です。次の募集をお待ちください...";
-                document.getElementById('dealer-section').style.display = 'none';
-                document.getElementById('result-controls').style.display = 'flex';
-            } else {
-                startLobby(cycleTime);
-            }
-            
-            mainInterval = setInterval(systemLoop, 1000);
 
             // チップ選択イベント
             document.querySelectorAll('.chip-option').forEach(el => {
                 el.addEventListener('click', () => {
-                    if (hasJoinedLocally) return; // 参加後は変更不可
+                    const joinBtn = document.getElementById('join-btn');
+                    if (joinBtn.disabled) return; // すでに参加済みの場合は変更不可
                     document.querySelectorAll('.chip-option').forEach(c => c.classList.remove('selected'));
                     el.classList.add('selected');
                     selectedChipValue = parseInt(el.dataset.val);
                 });
             });
+
+            // 毎秒サーバーに状態を問い合わせる
+            setInterval(fetchGameState, 1000);
+            fetchGameState(); // 初回即時実行
         };
 
-        // --- メインループ (5分おき現実時間同期) ---
-        function systemLoop() {
-            const now = Math.floor(Date.now() / 1000);
-            const cycleTime = now % CYCLE_TOTAL;
+        function returnToMenu() {
+            window.location.href = 'index.html';
+        }
 
-            if (cycleTime < LOBBY_TIME) {
-                // 【募集フェーズ】
-                if (currentPhase !== 'lobby') {
-                    startLobby(cycleTime);
+        // --- サーバー同期ロジック ---
+        async function fetchGameState() {
+            try {
+                const res = await fetch('/api/blackjack/state');
+                const data = await res.json();
+                if (data.success) {
+                    updateUI(data);
                 }
-
-                const timeLeft = LOBBY_TIME - cycleTime;
-                document.getElementById('lobby-timer').innerText = timeLeft;
-
-            } else {
-                // 【ゲーム開始・結果フェーズ】 (残り1分)
-                if (currentPhase === 'lobby') {
-                    if (joinedCount > 0) {
-                        startGame();
-                    } else {
-                        // 誰も参加しなかった場合スキップして待機
-                        currentPhase = 'result';
-                        document.getElementById('lobby-screen').className = 'screen';
-                        document.getElementById('game-screen').className = 'screen active';
-                        document.getElementById('turn-info').innerText = "参加者がいませんでした...";
-                        document.getElementById('dealer-section').style.display = 'none';
-                        document.getElementById('players-area').innerHTML = '';
-                        document.getElementById('result-controls').style.display = 'flex';
-                    }
-                }
-
-                if (currentPhase === 'playing') {
-                    // ターンタイマーの処理
-                    if (!isDealerTurn && !isTransitioning) {
-                        turnTimer--;
-                        const turnInfo = document.getElementById('turn-info');
-                        let pLabel = players[currentPlayerIndex].id === localPlayerId ? "(あなた)" : "";
-                        turnInfo.innerHTML = `Player ${players[currentPlayerIndex].id} ${pLabel} のターン - 残り <span class="${turnTimer <= 3 ? 'time-warning' : ''}">${turnTimer}</span> 秒`;
-
-                        // 人間プレイヤーの操作時間切れは自動でSTAND
-                        if (turnTimer <= 0) {
-                            playerAction('stand'); 
-                        }
-                    }
-                }
-
-                if (currentPhase === 'result') {
-                    const nextLobbyIn = CYCLE_TOTAL - cycleTime;
-                    document.getElementById('result-timer').innerText = nextLobbyIn;
-                }
-            }
-        }
-
-        // --- フェーズ管理：ロビー ---
-        function startLobby(currentCycleTime = 0) {
-            currentPhase = 'lobby';
-            joinedCount = 0;
-            
-            hasJoinedLocally = false; // 1人1枠の制限リセット[cite: 26]
-            localPlayerId = -1;
-            currentBet = 0;
-            
-            document.getElementById('lobby-screen').className = 'screen active';
-            document.getElementById('game-screen').className = 'screen';
-            document.getElementById('player-controls').style.display = 'none';
-            document.getElementById('result-controls').style.display = 'none';
-            document.getElementById('dealer-section').style.display = 'block'; // 次のゲーム用に表示戻す
-            
-            const joinBtn = document.getElementById('join-btn');
-            joinBtn.disabled = false;
-            joinBtn.innerText = '参加する';
-            joinBtn.style.background = '';
-
-            updateUI();
-        }
-
-        // 自分が参加する処理
-        function joinGame() {
-            if (currentPhase !== 'lobby' || joinedCount >= MAX_PLAYERS || hasJoinedLocally) return;
-            if (!isDataLoaded) { alert("データを読み込み中です..."); return; }
-            if (balance < selectedChipValue) { alert("ゴールドが足りません！"); return; }
-            
-            // ゴールドの消費と同期
-            balance -= selectedChipValue;
-            currentBet = selectedChipValue;
-            updateUI();
-            syncGoldToServer();
-
-            hasJoinedLocally = true;
-            localPlayerId = joinedCount + 1;
-            processJoin();
-
-            // 買い占め防止：ボタンロック[cite: 26]
-            const joinBtn = document.getElementById('join-btn');
-            joinBtn.disabled = true;
-            joinBtn.innerText = `受付完了 (Bet: ${currentBet}G)`;
-        }
-
-        // 共通の参加ロジック
-        function processJoin() {
-            joinedCount++;
-            updateUI();
-            
-            // 満員になったらボタンを使用不可に
-            if (joinedCount >= MAX_PLAYERS) {
-                const joinBtn = document.getElementById('join-btn');
-                joinBtn.disabled = true;
-                if(!hasJoinedLocally) joinBtn.innerText = '満員御礼！';
-            }
-        }
-
-        // --- フェーズ管理：ゲーム進行 ---
-        function startGame() {
-            currentPhase = 'playing';
-            document.getElementById('lobby-screen').className = 'screen';
-            document.getElementById('game-screen').className = 'screen active';
-            
-            createDeck();
-            dealer.hand = [deck.pop(), deck.pop()];
-            players = [];
-            
-            for (let i = 0; i < joinedCount; i++) {
-                players.push({
-                    id: i + 1,
-                    hand: [deck.pop(), deck.pop()],
-                    status: 'playing',
-                    resultMsg: '',
-                    multiplierText: '' // 倍率表示用
-                });
-            }
-            
-            currentPlayerIndex = 0;
-            document.getElementById('result-controls').style.display = 'none';
-            
-            checkInitialBlackjacks();
-            startTurn();
-        }
-
-        function startTurn() {
-            if (currentPlayerIndex >= joinedCount) {
-                dealerTurn();
-                return;
-            }
-
-            if (players[currentPlayerIndex].status !== 'playing') {
-                currentPlayerIndex++;
-                startTurn();
-                return;
-            }
-
-            // ターン開始時タイマーリセット
-            turnTimer = TURN_TIME_LIMIT;
-            isTransitioning = false;
-            isDealerTurn = false;
-
-            // 自分のターンのみボタンを表示する
-            if (players[currentPlayerIndex].id === localPlayerId) {
-                document.getElementById('player-controls').style.display = 'flex';
-            } else {
-                document.getElementById('player-controls').style.display = 'none';
-                // 他の人間プレイヤーのターン（サーバー等の入力を待つ間、時間切れで自動STANDへ進みます）
-            }
-
-            render();
-        }
-
-        // --- ゲームロジック ---
-        function createDeck() {
-            deck = [];
-            for (let suit of suits) {
-                for (let value of values) {
-                    deck.push({ suit, value });
-                }
-            }
-            for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
+            } catch (e) {}
         }
 
         function calculateScore(hand) {
-            let score = 0;
-            let aces = 0;
+            let score = 0, aces = 0;
             for (let card of hand) {
                 if (['J', 'Q', 'K'].includes(card.value)) score += 10;
                 else if (card.value === 'A') { score += 11; aces++; }
@@ -714,143 +473,140 @@
             return score;
         }
 
-        function checkInitialBlackjacks() {
-            players.forEach(p => {
-                if (calculateScore(p.hand) === 21) {
-                    p.status = 'bj';
-                    p.resultMsg = 'BLACKJACK';
-                }
+        function updateUI(data) {
+            const state = data.state;
+            const cycleTime = data.cycleTime;
+            const turnTimeLeft = data.turnTimeLeft;
+            const hasJoined = state.players.some(p => p.discordId === myDiscordId);
+
+            // 残高の更新（自動付与された分なども反映）
+            fetch('/api/me').then(r => r.json()).then(d => {
+                if(d.loggedIn) document.getElementById('balance').innerText = d.user.gold.toLocaleString();
             });
-        }
 
-        function playerAction(type) {
-            if (currentPhase !== 'playing') return;
+            if (state.phase === 'lobby' || (cycleTime < LOBBY_TIME && state.phase !== 'playing' && state.phase !== 'dealer_turn')) {
+                document.getElementById('lobby-screen').className = 'screen active';
+                document.getElementById('game-screen').className = 'screen';
+                
+                document.getElementById('lobby-timer').innerText = Math.max(0, LOBBY_TIME - cycleTime);
+                document.getElementById('lobby-count').innerText = state.players.length;
 
-            let p = players[currentPlayerIndex];
-            if (type === 'hit') {
-                p.hand.push(deck.pop());
-                if (calculateScore(p.hand) > 21) {
-                    p.status = 'bust';
-                    p.resultMsg = 'BUST';
-                    p.multiplierText = '(配当: 0倍)'; // BUST時
-                    currentPlayerIndex++;
-                    startTurn();
+                const joinBtn = document.getElementById('join-btn');
+                if (hasJoined) {
+                    const myBet = state.players.find(p => p.discordId === myDiscordId).bet;
+                    joinBtn.disabled = true;
+                    joinBtn.innerText = `受付完了 (Bet: ${myBet}G)`;
+                } else if (state.players.length >= 4) {
+                    joinBtn.disabled = true;
+                    joinBtn.innerText = '満員御礼！';
                 } else {
-                    turnTimer = TURN_TIME_LIMIT; // ヒットしたら時間リセット
-                    render();
+                    joinBtn.disabled = false;
+                    joinBtn.innerText = '参加する';
                 }
-            } else if (type === 'stand') {
-                p.status = 'stand';
-                currentPlayerIndex++;
-                startTurn();
+            } else {
+                // ゲーム画面またはリザルト画面
+                document.getElementById('lobby-screen').className = 'screen';
+                document.getElementById('game-screen').className = 'screen active';
+
+                if (state.phase === 'playing') {
+                    const activePlayer = state.players[state.currentPlayerIndex];
+                    if (activePlayer) {
+                        const isMe = activePlayer.discordId === myDiscordId;
+                        const pLabel = isMe ? "(あなた)" : `(${activePlayer.name})`;
+                        document.getElementById('turn-info').innerHTML = `Player ${activePlayer.id} ${pLabel} のターン - 残り <span class="${turnTimeLeft <= 3 ? 'time-warning' : ''}">${turnTimeLeft}</span> 秒`;
+                        
+                        document.getElementById('player-controls').style.display = isMe ? 'flex' : 'none';
+                    }
+                    document.getElementById('result-controls').style.display = 'none';
+                    renderGame(state, false); // ディーラーの2枚目を隠す
+                } 
+                else if (state.phase === 'dealer_turn') {
+                    document.getElementById('turn-info').innerHTML = "ディーラーのターン <span style='font-size:0.8rem'>(Thinking...)</span>";
+                    document.getElementById('player-controls').style.display = 'none';
+                    renderGame(state, true); // 全て見せる
+                }
+                else if (state.phase === 'result') {
+                    document.getElementById('turn-info').innerText = "=== RESULT ===";
+                    document.getElementById('player-controls').style.display = 'none';
+                    document.getElementById('result-controls').style.display = 'flex';
+                    document.getElementById('result-timer').innerText = Math.max(0, CYCLE_TOTAL - cycleTime);
+                    
+                    if(state.players.length === 0) {
+                        document.getElementById('turn-info').innerText = "参加者がいませんでした...";
+                        document.getElementById('dealer-section').style.display = 'none';
+                    } else {
+                        document.getElementById('dealer-section').style.display = 'block';
+                        renderGame(state, true);
+                    }
+                }
             }
         }
 
-        function dealerTurn() {
-            isDealerTurn = true;
-            document.getElementById('player-controls').style.display = 'none';
-            document.getElementById('turn-info').innerHTML = "ディーラーのターン <span style='font-size:0.8rem'>(Thinking...)</span>";
-            render(true); // まずディーラーのカードを表にする
-            
-            setTimeout(() => {
-                while (calculateScore(dealer.hand) < 17) {
-                    dealer.hand.push(deck.pop());
-                }
+        async function joinGame() {
+            if (!isDataLoaded) return alert("データ読み込み中...");
+            if (balance < selectedChipValue) return alert("ゴールドが足りません！");
 
-                const dScore = calculateScore(dealer.hand);
-                let winAmount = 0;
-                
-                players.forEach(p => {
-                    const pScore = calculateScore(p.hand);
-                    if (p.status === 'bust') {
-                        p.resultMsg = "LOSE (BUST)";
-                        p.multiplierText = "(配当: 0倍)";
-                    }
-                    else if (p.status === 'bj') {
-                        if (dScore === 21 && dealer.hand.length === 2) {
-                            p.resultMsg = "PUSH";
-                            p.multiplierText = "(配当: 1.0倍 返還)";
-                        } else {
-                            p.resultMsg = "WIN (BJ)";
-                            p.multiplierText = "(配当: 2.5倍)";
-                        }
-                    }
-                    else if (dScore > 21) {
-                        p.resultMsg = "WIN (D-BUST)";
-                        p.multiplierText = "(配当: 2.0倍)";
-                    }
-                    else if (pScore > dScore) {
-                        p.resultMsg = "WIN";
-                        p.multiplierText = "(配当: 2.0倍)";
-                    }
-                    else if (pScore < dScore) {
-                        p.resultMsg = "LOSE";
-                        p.multiplierText = "(配当: 0倍)";
-                    }
-                    else {
-                        p.resultMsg = "PUSH";
-                        p.multiplierText = "(配当: 1.0倍 返還)";
-                    }
+            const joinBtn = document.getElementById('join-btn');
+            joinBtn.disabled = true; 
+            joinBtn.innerText = "通信中...";
 
-                    // 自分自身の配当計算
-                    if (p.id === localPlayerId) {
-                        if (p.resultMsg.includes("WIN (BJ)")) winAmount = Math.floor(currentBet * 2.5);
-                        else if (p.resultMsg.includes("WIN")) winAmount = currentBet * 2;
-                        else if (p.resultMsg.includes("PUSH")) winAmount = currentBet;
-                    }
+            try {
+                const res = await fetch('/api/blackjack/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bet: selectedChipValue })
                 });
-
-                // 配当付与と同期
-                if (winAmount > 0) {
-                    balance += winAmount;
+                const data = await res.json();
+                if (!data.success) {
+                    alert(data.message);
+                    joinBtn.disabled = false;
+                    joinBtn.innerText = "参加する";
+                } else {
+                    balance = data.newGold;
+                    document.getElementById('balance').innerText = balance.toLocaleString();
+                    joinBtn.innerText = `受付完了 (Bet: ${selectedChipValue}G)`;
                 }
-                updateUI();
-                
-                // 決着がついたため、currentBetを0にし、フラグをリセットして通常セーブ
-                if (hasJoinedLocally) {
-                    currentBet = 0;
-                    hasJoinedLocally = false;
-                    syncGoldToServer();
-                }
-
-                finishRound();
-            }, 1200); // もったいぶる演出
+            } catch (e) {
+                alert("通信エラーが発生しました");
+                joinBtn.disabled = false;
+                joinBtn.innerText = "参加する";
+            }
         }
 
-        function finishRound() {
-            currentPhase = 'result';
-            document.getElementById('turn-info').innerText = "=== RESULT ===";
-            document.getElementById('result-controls').style.display = 'flex';
-            render(true);
+        async function playerAction(type) {
+            document.getElementById('player-controls').style.display = 'none'; // 連打防止
+            await fetch('/api/blackjack/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type })
+            });
         }
 
-        // --- UI描画 ---
-        function render(showDealer = false) {
+        // --- 描画関数 ---
+        function renderGame(state, showDealerAll) {
             const dealerHandDiv = document.getElementById('dealer-hand');
             dealerHandDiv.innerHTML = '';
-            dealer.hand.forEach((c, i) => {
-                dealerHandDiv.appendChild(createCardUI(c, !showDealer && i === 1));
+            state.dealer.hand.forEach((c, i) => {
+                dealerHandDiv.appendChild(createCardUI(c, !showDealerAll && i === 1));
             });
-            document.getElementById('dealer-score').innerText = showDealer ? calculateScore(dealer.hand) : '?';
+            document.getElementById('dealer-score').innerText = showDealerAll ? calculateScore(state.dealer.hand) : '?';
 
             const area = document.getElementById('players-area');
             area.innerHTML = '';
-            players.forEach((p, i) => {
+            state.players.forEach((p, i) => {
                 const box = document.createElement('div');
-                // 自分のボックスは縁を光らせて分かりやすく
-                const isLocal = p.id === localPlayerId ? 'border-color: #2ecc71;' : '';
+                const isLocal = p.discordId === myDiscordId;
+                const isActive = (i === state.currentPlayerIndex && state.phase === 'playing');
                 
-                box.className = `player-box ${i === currentPlayerIndex && currentPhase === 'playing' ? 'active' : ''}`;
-                if(isLocal && !(i === currentPlayerIndex && currentPhase === 'playing')) {
-                    box.style.border = "2px solid #2ecc71";
-                }
+                box.className = `player-box ${isActive ? 'active' : ''}`;
+                if(isLocal && !isActive) box.style.border = "2px solid #2ecc71";
                 
                 const score = calculateScore(p.hand);
-                const pLabel = p.id === localPlayerId ? " <small style='color:#2ecc71;'>(あなた)</small>" : "";
+                const pLabel = isLocal ? " <small style='color:#2ecc71;'>(あなた)</small>" : ` <small>(${p.name})</small>`;
 
                 box.innerHTML = `
                     <div style="font-weight:bold; font-size:1.2rem; margin-bottom:5px;">
-                        PLAYER ${p.id} ${pLabel} <span class="score-badge">${score}</span>
+                        Player ${p.id} ${pLabel} <span class="score-badge">${score}</span>
                     </div>
                     <div class="hand-display"></div>
                     <span class="result-label" style="color:${getResultColor(p.resultMsg)}">
@@ -860,7 +616,6 @@
                 `;
                 
                 const handDiv = box.querySelector('.hand-display');
-                // 少しずつ遅れてカードを配るアニメーション用
                 p.hand.forEach((c, index) => {
                     const cardElement = createCardUI(c);
                     cardElement.style.animationDelay = `${index * 0.1}s`;

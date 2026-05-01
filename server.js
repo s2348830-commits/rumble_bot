@@ -14,7 +14,7 @@ const CLIENT_SECRET = "h2HAw_NEwR5TirXfELAsFM_ohg2XR_Ed";
 const REDIRECT_URI = "https://rumble-bot-w6wv.onrender.com/api/callback";
 // ==========================================
 
-// ★追加：各ボスの報酬額をサーバー側でも定義
+// ★各ボスの報酬額をサーバー側でも定義
 const BOSS_REWARDS = { 
     1: 18000, 2: 20000, 3: 17000, 4: 30000, 5: 15000, 6: 35000, 0: 40000 
 };
@@ -169,13 +169,13 @@ app.get('/api/check_notifications', async (req, res) => {
             );
             
             req.session.user.inventory = dbUser.inventory || {};
-            req.session.user.gold = dbUser.gold; // ★追加: ゴールドも最新同期
+            req.session.user.gold = dbUser.gold; 
             req.session.save(() => {
                 res.json({ 
                     success: true, 
                     notifications: dbUser.notifications, 
                     newInventory: dbUser.inventory,
-                    newGold: dbUser.gold // ★追加: フロントに最新ゴールドを返す
+                    newGold: dbUser.gold 
                 });
             });
         } else {
@@ -299,38 +299,6 @@ app.post('/api/sell', async (req, res) => {
     } catch (error) { res.status(500).send("DBエラー"); }
 });
 
-// ※旧システム用の予備として残していますが、自動振り込み化に伴い基本的には使われません
-app.post('/api/boss_reward', async (req, res) => {
-    if (!req.session.user) return res.status(401).json({ success: false });
-
-    try {
-        const discordId = req.session.user.discordId;
-        const reward = req.body.reward; 
-
-        await client.connect();
-        const usersCollection = client.db('rpg_game').collection('users');
-        const user = await usersCollection.findOne({ discordId: discordId });
-
-        if (user) {
-            const newGold = user.gold + reward;
-            await usersCollection.updateOne(
-                { discordId: discordId },
-                { $set: { gold: newGold } }
-            );
-
-            req.session.user.gold = newGold;
-            req.session.save(() => {
-                res.json({ success: true, newGold: newGold });
-            });
-        } else {
-            res.json({ success: false });
-        }
-    } catch (error) { 
-        console.error(error);
-        res.status(500).send("DBエラー"); 
-    }
-});
-
 app.post('/api/update_player', async (req, res) => {
     if (!req.session.user) return res.status(401).json({ success: false });
 
@@ -396,15 +364,12 @@ app.post('/api/gift', async (req, res) => {
             return res.json({ success: false, message: "アイテムの所持数が足りません。" });
         }
 
-        // 送る側から引く
         sender.inventory[itemName] -= amount;
         if (sender.inventory[itemName] <= 0) delete sender.inventory[itemName];
 
-        // 受け取る側に足す
         receiver.inventory = receiver.inventory || {};
         receiver.inventory[itemName] = (receiver.inventory[itemName] || 0) + amount;
 
-        // 通知メッセージを追加
         receiver.notifications = receiver.notifications || [];
         receiver.notifications.push(`${senderName} さんから「${itemName}」が ${amount}個 送られました！`);
 
@@ -422,9 +387,8 @@ app.post('/api/gift', async (req, res) => {
 });
 
 // ==========================================
-// ★管理者用API（他プレイヤーの操作）
+// ★管理者用API
 // ==========================================
-
 app.post('/api/admin/player_info', async (req, res) => {
     try {
         const { targetName } = req.body;
@@ -509,10 +473,7 @@ app.post('/api/admin/shop', async (req, res) => {
             }
         }
         res.json({ success: updated });
-    } catch (error) { 
-        console.error(error);
-        res.status(500).send("DBエラー"); 
-    }
+    } catch (error) { res.status(500).send("DBエラー"); }
 });
 
 // ==========================================
@@ -521,8 +482,8 @@ app.post('/api/admin/shop', async (req, res) => {
 let globalBossState = {
     dateStr: "", dayIndex: 5, bossHp: 1020000, bossMaxHp: 1020000, 
     playerHp: 0, playerMaxHp: 0, participants: 0, 
-    participantIds: [], // ★追加：参加者のIDを記録
-    isDefeated: false, hasRevived: false, rewardDistributed: false, // ★追加：報酬配布済みフラグ
+    participantIds: [], 
+    isDefeated: false, hasRevived: false, rewardDistributed: false, 
     unlockedDaysData: {},
     logs: [],
     buffs: {
@@ -545,9 +506,7 @@ app.get('/api/global_state', async (req, res) => {
             isGlobalStateLoaded = true;
         }
         res.json({ success: true, state: globalBossState });
-    } catch (error) {
-        res.status(500).json({ success: false });
-    }
+    } catch (error) { res.status(500).json({ success: false }); }
 });
 
 app.post('/api/boss/action', async (req, res) => {
@@ -575,16 +534,14 @@ app.post('/api/boss/action', async (req, res) => {
                 globalBossState.isDefeated = true;
             }
 
-            // ★ 新規追加：ボス討伐時の自動報酬振り込み処理（サーバー権限でのみ実行）
             if (globalBossState.isDefeated && !globalBossState.rewardDistributed) {
-                globalBossState.rewardDistributed = true; // 二重取り防止
+                globalBossState.rewardDistributed = true; 
                 const reward = BOSS_REWARDS[globalBossState.dayIndex] || 15000;
 
                 if (globalBossState.participantIds && globalBossState.participantIds.length > 0) {
                     const usersCollection = db.collection('users');
                     const msg = `【ボス討伐報酬】オフライン/戦闘中にボスが討伐されました！報酬 ${reward} G を獲得しました！`;
 
-                    // 参加者全員の所持金に直接足し、通知メッセージを入れる
                     await usersCollection.updateMany(
                         { discordId: { $in: globalBossState.participantIds } },
                         {
@@ -614,20 +571,18 @@ app.post('/api/boss/action', async (req, res) => {
             globalBossState.playerMaxHp += 1000000;
             globalBossState.playerHp += 1000000;
             
-            // ★追加：参加者のDiscord IDを記録する
             if (req.session.user) {
                 if (!globalBossState.participantIds) globalBossState.participantIds = [];
                 if (!globalBossState.participantIds.includes(req.session.user.discordId)) {
                     globalBossState.participantIds.push(req.session.user.discordId);
                 }
             }
-
         } else if (type === 'set_state') {
             globalBossState = { ...globalBossState, ...data }; 
             if (data.resetBuffs) {
                 globalBossState.logs = [];
-                globalBossState.participantIds = []; // ★追加：リセット時に参加者リストも空にする
-                globalBossState.rewardDistributed = false; // ★追加：配布済みフラグもリセット
+                globalBossState.participantIds = []; 
+                globalBossState.rewardDistributed = false; 
                 globalBossState.buffs = {
                     sunchaliceUntil: 0, fbBonusDamage: 0, bloodyUntil: 0, crescentPercent: 5.0,
                     playerShieldUntil: 0, bossEvasion: 0, stellaUsed: false,
@@ -648,15 +603,12 @@ app.post('/api/boss/action', async (req, res) => {
         db.collection('global').updateOne({ _id: 'boss_state' }, { $set: globalBossState }, { upsert: true }).catch(console.error);
         
         res.json({ success: true, state: globalBossState });
-    } catch (error) {
-        res.status(500).json({ success: false });
-    }
+    } catch (error) { res.status(500).json({ success: false }); }
 });
 
 // ==========================================
 // ★特別市場（投資）のDBと価格変動ロジック
 // ==========================================
-
 function getJSTLogicalDate() {
     const now = new Date();
     const jstTime = now.getTime() + (9 * 60 * 60 * 1000); 
@@ -685,7 +637,6 @@ const marketItemsDef = [
 function simulateMarketDay(itemState, def) {
     const minPrice = Math.max(10, Math.floor(def.basePrice * 0.3));
     const maxPrice = Math.floor(def.basePrice * 3.0);
-    
     let currentPrice = itemState.history[itemState.history.length - 1].close;
 
     if (!itemState.trend || itemState.trendDays <= 0) {
@@ -733,9 +684,7 @@ app.get('/api/market', async (req, res) => {
                     trendDays: 2,
                     history: [{ open: def.basePrice, high: def.basePrice*1.05, low: def.basePrice*0.95, close: def.basePrice }]
                 };
-                for (let i = 0; i < 29; i++) {
-                    simulateMarketDay(state.items[def.id], def);
-                }
+                for (let i = 0; i < 29; i++) { simulateMarketDay(state.items[def.id], def); }
             }
             await db.collection('global').insertOne(state);
         } else {
@@ -754,9 +703,7 @@ app.get('/api/market', async (req, res) => {
                 if (diffDays > 0) {
                     if (diffDays > 30) diffDays = 30; 
                     for (let i = 0; i < diffDays; i++) {
-                        for (let def of marketItemsDef) {
-                            simulateMarketDay(state.items[def.id], def);
-                        }
+                        for (let def of marketItemsDef) { simulateMarketDay(state.items[def.id], def); }
                     }
                     state.date = todayStr;
                     await db.collection('global').updateOne({ _id: 'market_state' }, { $set: state });
@@ -766,10 +713,7 @@ app.get('/api/market', async (req, res) => {
             }
         }
         res.json({ success: true, state: state });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ success: false });
-    }
+    } catch (e) { res.status(500).json({ success: false }); }
 });
 
 app.post('/api/market/trade', async (req, res) => {
@@ -808,10 +752,214 @@ app.post('/api/market/trade', async (req, res) => {
             res.json({ success: true, message: action === 'buy' ? "購入しました！" : "売却しました！", newGold: user.gold, newInventory: inventory });
         });
 
-    } catch (e) {
-        res.status(500).json({ success: false, message: "DBエラー" });
+    } catch (e) { res.status(500).json({ success: false, message: "DBエラー" }); }
+});
+
+// ==========================================
+// ★BLACKJACK SYSTEM (完全マルチプレイヤーサーバー同期)
+// ==========================================
+const suits = ['♠', '♥', '♦', '♣'];
+const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+let bjState = {
+    phase: 'lobby',
+    players: [], 
+    dealer: { hand: [] },
+    deck: [],
+    currentPlayerIndex: 0,
+    turnEndTime: 0
+};
+
+function getBjScore(hand) {
+    let score = 0, aces = 0;
+    for(let c of hand) {
+        if(['J','Q','K'].includes(c.value)) score += 10;
+        else if(c.value === 'A') { score += 11; aces++; }
+        else score += parseInt(c.value);
+    }
+    while(score > 21 && aces > 0) { score -= 10; aces--; }
+    return score;
+}
+
+function createShuffledDeck() {
+    let newDeck = [];
+    for (let suit of suits) {
+        for (let value of values) { newDeck.push({ suit, value }); }
+    }
+    for (let i = newDeck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
+    }
+    return newDeck;
+}
+
+function advanceBjTurn() {
+    bjState.currentPlayerIndex++;
+    while(bjState.currentPlayerIndex < bjState.players.length && bjState.players[bjState.currentPlayerIndex].status !== 'playing') {
+        bjState.currentPlayerIndex++;
+    }
+    if(bjState.currentPlayerIndex >= bjState.players.length) {
+        executeDealerTurn();
+    } else {
+        bjState.turnEndTime = Math.floor(Date.now() / 1000) + 10; // 持ち時間10秒
+    }
+}
+
+async function executeDealerTurn() {
+    bjState.phase = 'dealer_turn'; // アクションをブロック
+    while(getBjScore(bjState.dealer.hand) < 17) {
+        bjState.dealer.hand.push(bjState.deck.pop());
+    }
+    const dScore = getBjScore(bjState.dealer.hand);
+
+    try {
+        await client.connect();
+        const usersCollection = client.db('rpg_game').collection('users');
+
+        for(let p of bjState.players) {
+            const pScore = getBjScore(p.hand);
+            let winAmount = 0;
+
+            if (p.status === 'bust') {
+                p.resultMsg = "LOSE (BUST)";
+                p.multiplierText = "(配当: 0倍)";
+            } else if (p.status === 'bj') {
+                if (dScore === 21 && bjState.dealer.hand.length === 2) {
+                    p.resultMsg = "PUSH"; p.multiplierText = "(配当: 1.0倍 返還)"; winAmount = p.bet;
+                } else {
+                    p.resultMsg = "WIN (BJ)"; p.multiplierText = "(配当: 2.5倍)"; winAmount = Math.floor(p.bet * 2.5);
+                }
+            } else if (dScore > 21) {
+                p.resultMsg = "WIN (D-BUST)"; p.multiplierText = "(配当: 2.0倍)"; winAmount = p.bet * 2;
+            } else if (pScore > dScore) {
+                p.resultMsg = "WIN"; p.multiplierText = "(配当: 2.0倍)"; winAmount = p.bet * 2;
+            } else if (pScore < dScore) {
+                p.resultMsg = "LOSE"; p.multiplierText = "(配当: 0倍)";
+            } else {
+                p.resultMsg = "PUSH"; p.multiplierText = "(配当: 1.0倍 返還)"; winAmount = p.bet;
+            }
+
+            // 配当がある場合はデータベースに直接付与（ブラウザが閉じられていても受け取れる）
+            if (winAmount > 0) {
+                await usersCollection.updateOne(
+                    { discordId: p.discordId },
+                    { $inc: { gold: winAmount } }
+                );
+            }
+        }
+    } catch(e) { console.error("Dealer payout error", e); }
+
+    bjState.phase = 'result';
+}
+
+// ゲームのメインループ（1秒ごとのチェック）
+setInterval(() => {
+    const now = Math.floor(Date.now() / 1000);
+    const cycleTime = now % 300; // 5分 = 300秒
+
+    if (cycleTime < 240) { // 最初の4分間はロビー
+        if (bjState.phase !== 'lobby') {
+            // 新しいゲームに向けてリセット
+            bjState = { phase: 'lobby', players: [], dealer: { hand: [] }, deck: [], currentPlayerIndex: 0, turnEndTime: 0 };
+        }
+    } else { // 残り1分はゲーム・結果
+        if (bjState.phase === 'lobby') {
+            if (bjState.players.length > 0) {
+                bjState.phase = 'playing';
+                bjState.deck = createShuffledDeck();
+                bjState.dealer.hand = [bjState.deck.pop(), bjState.deck.pop()];
+                bjState.players.forEach(p => {
+                    p.hand = [bjState.deck.pop(), bjState.deck.pop()];
+                    if (getBjScore(p.hand) === 21) p.status = 'bj';
+                });
+                advanceBjTurn(); // 最初のプレイヤーのターンセットアップ（bjスキップ等）
+                if(bjState.currentPlayerIndex === 0 && bjState.players[0].status === 'playing') {
+                    bjState.turnEndTime = Math.floor(Date.now() / 1000) + 10;
+                }
+            } else {
+                bjState.phase = 'result'; // 誰も参加しなかったらスキップ
+            }
+        } else if (bjState.phase === 'playing') {
+            // 現在のプレイヤーの時間切れを監視
+            if (now >= bjState.turnEndTime) {
+                if (bjState.players[bjState.currentPlayerIndex]) {
+                    bjState.players[bjState.currentPlayerIndex].status = 'stand'; // 時間切れ強制スタンド
+                    advanceBjTurn();
+                }
+            }
+        }
+    }
+}, 1000);
+
+app.get('/api/blackjack/state', (req, res) => {
+    const now = Math.floor(Date.now() / 1000);
+    const cycleTime = now % 300;
+    const turnTimeLeft = Math.max(0, bjState.turnEndTime - now);
+    res.json({ success: true, state: bjState, cycleTime: cycleTime, turnTimeLeft: turnTimeLeft });
+});
+
+app.post('/api/blackjack/join', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false, message: 'ログインしていません' });
+    if (bjState.phase !== 'lobby') return res.json({ success: false, message: '現在は募集していません' });
+    if (bjState.players.length >= 4) return res.json({ success: false, message: '満員です' });
+    if (bjState.players.some(p => p.discordId === req.session.user.discordId)) return res.json({ success: false, message: '既に参加しています' });
+
+    const bet = parseInt(req.body.bet);
+    if (req.session.user.gold < bet) return res.json({ success: false, message: 'ゴールドが足りません' });
+
+    try {
+        await client.connect();
+        const newGold = req.session.user.gold - bet;
+        await client.db('rpg_game').collection('users').updateOne(
+            { discordId: req.session.user.discordId },
+            { $set: { gold: newGold } }
+        );
+        req.session.user.gold = newGold;
+        req.session.save();
+
+        bjState.players.push({
+            id: bjState.players.length + 1,
+            discordId: req.session.user.discordId,
+            name: req.session.user.name,
+            bet: bet,
+            hand: [],
+            status: 'playing',
+            resultMsg: '',
+            multiplierText: ''
+        });
+
+        res.json({ success: true, newGold: newGold });
+    } catch(e) {
+        res.json({ success: false, message: 'DBエラー' });
     }
 });
+
+app.post('/api/blackjack/action', async (req, res) => {
+    if (!req.session.user) return res.status(401).json({ success: false });
+    if (bjState.phase !== 'playing') return res.json({ success: false });
+
+    const p = bjState.players[bjState.currentPlayerIndex];
+    if (!p || p.discordId !== req.session.user.discordId) return res.json({ success: false, message: 'あなたのターンではありません' });
+
+    const action = req.body.type;
+    if (action === 'hit') {
+        p.hand.push(bjState.deck.pop());
+        if (getBjScore(p.hand) > 21) {
+            p.status = 'bust';
+            p.resultMsg = 'BUST';
+            p.multiplierText = '(配当: 0倍)';
+            advanceBjTurn();
+        } else {
+            bjState.turnEndTime = Math.floor(Date.now() / 1000) + 10; // ヒットしたら時間リセット
+        }
+    } else if (action === 'stand') {
+        p.status = 'stand';
+        advanceBjTurn();
+    }
+    res.json({ success: true });
+});
+
+// ==========================================
 
 app.listen(port, () => {
     console.log(`お店のサーバーが起動しました！ http://localhost:${port}`);
