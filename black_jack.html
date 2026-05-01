@@ -302,6 +302,17 @@
             letter-spacing: 1px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
             animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .multiplier-text {
+            font-size: 0.8rem;
+            color: #ddd;
+            margin-top: 3px;
+            text-shadow: none;
+            font-weight: normal;
         }
 
         /* --- アニメーション --- */
@@ -356,7 +367,7 @@
         
         <!-- 開発用 / メニュー戻る -->
         <button class="debug-btn" onclick="joinDummy()" style="margin-bottom: 15px; border-color: #333; background: #222;">[開発用] CPUを追加</button>
-        <button class="debug-btn" onclick="window.location.href='index.html'" style="background: #444; border-color: #666;">◀ メニューに戻る</button>
+        <button class="debug-btn" onclick="returnToMenu()" style="background: #444; border-color: #666;">◀ メニューに戻る</button>
 
         <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※1人以上参加で、時間が来たら自動開始します</p>
     </div>
@@ -386,6 +397,7 @@
             <div style="font-size: 1.3rem; font-weight: bold; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 10px;">
                 次の募集まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem;">10</span> 秒...
             </div>
+            <button class="action-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-left: 15px;">◀ メニューに戻る</button>
         </div>
     </div>
 
@@ -451,6 +463,28 @@
                 console.error("ゴールドの同期に失敗しました", e);
             }
         }
+
+        // --- ゴールドのバックアップ機能 (ページ離脱時に返還) ---
+        function refundBets() {
+            if ((currentPhase === 'lobby' || currentPhase === 'playing') && hasJoinedLocally && currentBet > 0) {
+                balance += currentBet;
+                currentBet = 0;
+                hasJoinedLocally = false;
+                // sendBeaconで非同期かつ確実にサーバーへ送信
+                const data = JSON.stringify({ gold: balance, inventory: playerInventory });
+                navigator.sendBeacon('/api/update_player', new Blob([data], { type: 'application/json' }));
+            }
+        }
+
+        // 戻るボタン押下時
+        function returnToMenu() {
+            refundBets();
+            window.location.href = 'index.html';
+        }
+
+        // ブラウザの戻る・リロード・タブ閉じ時
+        window.addEventListener('beforeunload', refundBets);
+
 
         function updateUI() {
             const balEl = document.getElementById('balance');
@@ -593,7 +627,8 @@
                     id: i + 1,
                     hand: [deck.pop(), deck.pop()],
                     status: 'playing',
-                    resultMsg: ''
+                    resultMsg: '',
+                    multiplierText: '' // 倍率表示用
                 });
             }
             
@@ -668,6 +703,7 @@
                 if (calculateScore(p.hand) === 21) {
                     p.status = 'bj';
                     p.resultMsg = 'BLACKJACK';
+                    // ディーラーのBJ確認待ちなのでこの時点では配当確定しない
                 }
             });
         }
@@ -681,6 +717,7 @@
                 if (calculateScore(p.hand) > 21) {
                     p.status = 'bust';
                     p.resultMsg = 'BUST';
+                    p.multiplierText = '(配当: 0倍)'; // BUST時
                     currentPlayerIndex++;
                     startTurn();
                 } else {
@@ -709,14 +746,35 @@
                 
                 players.forEach(p => {
                     const pScore = calculateScore(p.hand);
-                    if (p.status === 'bust') p.resultMsg = "LOSE (BUST)";
-                    else if (p.status === 'bj') {
-                        p.resultMsg = (dScore === 21 && dealer.hand.length === 2) ? "PUSH" : "WIN (BJ)";
+                    if (p.status === 'bust') {
+                        p.resultMsg = "LOSE (BUST)";
+                        p.multiplierText = "(配当: 0倍)";
                     }
-                    else if (dScore > 21) p.resultMsg = "WIN (D-BUST)";
-                    else if (pScore > dScore) p.resultMsg = "WIN";
-                    else if (pScore < dScore) p.resultMsg = "LOSE";
-                    else p.resultMsg = "PUSH";
+                    else if (p.status === 'bj') {
+                        if (dScore === 21 && dealer.hand.length === 2) {
+                            p.resultMsg = "PUSH";
+                            p.multiplierText = "(配当: 1.0倍 返還)";
+                        } else {
+                            p.resultMsg = "WIN (BJ)";
+                            p.multiplierText = "(配当: 2.5倍)";
+                        }
+                    }
+                    else if (dScore > 21) {
+                        p.resultMsg = "WIN (D-BUST)";
+                        p.multiplierText = "(配当: 2.0倍)";
+                    }
+                    else if (pScore > dScore) {
+                        p.resultMsg = "WIN";
+                        p.multiplierText = "(配当: 2.0倍)";
+                    }
+                    else if (pScore < dScore) {
+                        p.resultMsg = "LOSE";
+                        p.multiplierText = "(配当: 0倍)";
+                    }
+                    else {
+                        p.resultMsg = "PUSH";
+                        p.multiplierText = "(配当: 1.0倍 返還)";
+                    }
 
                     // 自分自身の配当計算
                     if (p.id === localPlayerId) {
@@ -731,7 +789,13 @@
                     balance += winAmount;
                 }
                 updateUI();
-                if (hasJoinedLocally) syncGoldToServer();
+                
+                // 決着がついたため、currentBetを0にし、フラグをリセットして通常セーブ
+                if (hasJoinedLocally) {
+                    currentBet = 0;
+                    hasJoinedLocally = false;
+                    syncGoldToServer();
+                }
 
                 finishRound();
             }, 1200); // もったいぶる演出（1.2秒）
@@ -775,7 +839,10 @@
                         PLAYER ${p.id} ${pLabel} <span class="score-badge">${score}</span>
                     </div>
                     <div class="hand-display"></div>
-                    <span class="result-label" style="color:${getResultColor(p.resultMsg)}">${p.resultMsg}</span>
+                    <span class="result-label" style="color:${getResultColor(p.resultMsg)}">
+                        ${p.resultMsg}
+                        <span class="multiplier-text">${p.multiplierText || ''}</span>
+                    </span>
                 `;
                 
                 const handDiv = box.querySelector('.hand-display');
