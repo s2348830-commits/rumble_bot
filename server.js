@@ -14,7 +14,6 @@ const CLIENT_SECRET = "h2HAw_NEwR5TirXfELAsFM_ohg2XR_Ed";
 const REDIRECT_URI = "https://rumble-bot-w6wv.onrender.com/api/callback";
 // ==========================================
 
-// ★各ボスの報酬額をサーバー側でも定義
 const BOSS_REWARDS = { 
     1: 18000, 2: 20000, 3: 17000, 4: 30000, 5: 15000, 6: 35000, 0: 40000 
 };
@@ -839,7 +838,7 @@ async function executeDealerTurn() {
                 p.resultMsg = "PUSH"; p.multiplierText = "(配当: 1.0倍 返還)"; winAmount = p.bet;
             }
 
-            // 配当がある場合はデータベースに直接付与（ブラウザが閉じられていても受け取れる）
+            // 配当がある場合はデータベースに直接付与
             if (winAmount > 0) {
                 await usersCollection.updateOne(
                     { discordId: p.discordId },
@@ -855,9 +854,10 @@ async function executeDealerTurn() {
 // ゲームのメインループ（1秒ごとのチェック）
 setInterval(() => {
     const now = Math.floor(Date.now() / 1000);
-    const cycleTime = now % 300; // 5分 = 300秒
+    // 待ち時間変更：全体で120秒（2分）サイクルに変更。前半の60秒間（1分間）をロビーにする。
+    const cycleTime = now % 120; 
 
-    if (cycleTime < 240) { // 最初の4分間はロビー
+    if (cycleTime < 60) { // 最初の1分間はロビー
         if (bjState.phase !== 'lobby') {
             // 新しいゲームに向けてリセット
             bjState = { phase: 'lobby', players: [], dealer: { hand: [] }, deck: [], currentPlayerIndex: 0, turnEndTime: 0 };
@@ -872,7 +872,7 @@ setInterval(() => {
                     p.hand = [bjState.deck.pop(), bjState.deck.pop()];
                     if (getBjScore(p.hand) === 21) p.status = 'bj';
                 });
-                advanceBjTurn(); // 最初のプレイヤーのターンセットアップ（bjスキップ等）
+                advanceBjTurn(); 
                 if(bjState.currentPlayerIndex === 0 && bjState.players[0].status === 'playing') {
                     bjState.turnEndTime = Math.floor(Date.now() / 1000) + 10;
                 }
@@ -893,7 +893,7 @@ setInterval(() => {
 
 app.get('/api/blackjack/state', (req, res) => {
     const now = Math.floor(Date.now() / 1000);
-    const cycleTime = now % 300;
+    const cycleTime = now % 120; // ここも120に変更
     const turnTimeLeft = Math.max(0, bjState.turnEndTime - now);
     res.json({ success: true, state: bjState, cycleTime: cycleTime, turnTimeLeft: turnTimeLeft });
 });

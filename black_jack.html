@@ -50,6 +50,8 @@
             -webkit-backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 30px;
+            /* 下部に固定されるパネルとコンテンツが被らないように余白を追加 */
+            padding-bottom: 110px; 
             box-shadow: 0 15px 35px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
             border: 1px solid var(--panel-border);
             box-sizing: border-box;
@@ -258,13 +260,25 @@
         }
         .card.back > div { display: none; }
 
-        /* --- 操作パネル等 --- */
-        .controls {
+        /* --- 操作パネル等 (スマホ対応 固定レイアウト) --- */
+        .fixed-bottom-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 25px;
+            border-radius: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9), 0 0 15px rgba(241, 196, 15, 0.4);
+            border: 2px solid var(--accent-gold);
+            backdrop-filter: blur(5px);
+            width: max-content;
+            max-width: 95vw;
             display: flex;
             justify-content: center;
-            gap: 20px;
-            margin-top: 10px;
-            height: 50px;
+            align-items: center;
+            gap: 15px;
         }
 
         button.action-btn {
@@ -366,7 +380,7 @@
         <button id="join-btn" class="join-btn" onclick="joinGame()">参加する</button>
         <button class="debug-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-top: 20px;">◀ メニューに戻る</button>
 
-        <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※5分に1回ゲームが開始されます。他のプレイヤー(人間)の参加を待ちます。</p>
+        <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※1分に1回ゲームが開始されます。他のプレイヤーの参加を待ちます。</p>
     </div>
 
     <!-- 2. ゲームフェーズ & 3. 結果フェーズ -->
@@ -383,18 +397,18 @@
         <!-- プレイヤーたち -->
         <div id="players-area" class="players-grid"></div>
 
-        <!-- 操作パネル -->
-        <div class="controls" id="player-controls" style="display: none;">
+        <!-- 操作パネル（スマホ向けに画面下部へ固定配置） -->
+        <div class="fixed-bottom-panel" id="player-controls" style="display: none;">
             <button id="hit-btn" class="action-btn" onclick="playerAction('hit')">HIT</button>
             <button id="stand-btn" class="action-btn" onclick="playerAction('stand')">STAND</button>
         </div>
 
-        <!-- 結果時のカウントダウン表示など -->
-        <div class="controls" id="result-controls" style="display: none;">
-            <div style="font-size: 1.3rem; font-weight: bold; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 10px;">
-                次の募集開始まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem;">--</span> 秒...
+        <!-- 結果時のカウントダウン表示など（これも下部へ固定） -->
+        <div class="fixed-bottom-panel" id="result-controls" style="display: none;">
+            <div style="font-size: 1.1rem; font-weight: bold; margin-right: 10px; display: flex; align-items: center;">
+                次まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem; margin: 0 10px;">--</span> 秒
             </div>
-            <button class="action-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-left: 15px;">◀ メニューに戻る</button>
+            <button class="action-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; padding: 10px 20px; font-size: 1rem;">戻る</button>
         </div>
     </div>
 
@@ -405,8 +419,8 @@
         let myDiscordId = null;
         let selectedChipValue = 100;
         
-        const LOBBY_TIME = 240;
-        const CYCLE_TOTAL = 300;
+        const LOBBY_TIME = 60; // 変更: ロビー時間を1分（60秒）に
+        const CYCLE_TOTAL = 120; // 変更: 全体サイクルを2分（120秒）に
 
         // ログイン情報を取得
         async function loadUserData() {
