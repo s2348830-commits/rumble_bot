@@ -356,7 +356,7 @@
         </div>
 
         <div class="timer-circle">
-            <span id="lobby-timer">60</span>
+            <span id="lobby-timer">--</span>
         </div>
         <div class="lobby-info">
             <p>現在の参加人数: <strong id="lobby-count" style="font-size:1.8rem; color: var(--accent-gold);">0</strong> <span style="font-size:1.2rem;">/ 4 人</span></p>
@@ -365,11 +365,10 @@
         <!-- プレイヤー参加ボタン -->
         <button id="join-btn" class="join-btn" onclick="joinGame()">参加する</button>
         
-        <!-- 開発用 / メニュー戻る -->
-        <button class="debug-btn" onclick="joinDummy()" style="margin-bottom: 15px; border-color: #333; background: #222;">[開発用] CPUを追加</button>
-        <button class="debug-btn" onclick="returnToMenu()" style="background: #444; border-color: #666;">◀ メニューに戻る</button>
+        <!-- 開発用CPUボタンは削除・メニューへ戻るボタンのみ配置 -->
+        <button class="debug-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-top: 20px;">◀ メニューに戻る</button>
 
-        <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※1人以上参加で、時間が来たら自動開始します</p>
+        <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※5分に1回ゲームが開始されます。他のプレイヤー(人間)の参加を待ちます。</p>
     </div>
 
     <!-- 2. ゲームフェーズ & 3. 結果フェーズ -->
@@ -378,7 +377,7 @@
         <div class="turn-indicator" id="turn-info">準備中...</div>
 
         <!-- ディーラー -->
-        <div class="dealer-section">
+        <div id="dealer-section" class="dealer-section">
             <h3 style="margin:0 0 10px 0; font-size: 1.3rem;">DEALER <span id="dealer-score" class="score-badge">?</span></h3>
             <div id="dealer-hand" class="hand-display"></div>
         </div>
@@ -395,18 +394,18 @@
         <!-- 結果時のカウントダウン表示など -->
         <div class="controls" id="result-controls" style="display: none;">
             <div style="font-size: 1.3rem; font-weight: bold; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 10px;">
-                次の募集まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem;">10</span> 秒...
+                次の募集開始まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem;">--</span> 秒...
             </div>
             <button class="action-btn" onclick="returnToMenu()" style="background: #444; border-color: #666; margin-left: 15px;">◀ メニューに戻る</button>
         </div>
     </div>
 
     <script>
-        // --- システム設定 ---
-        const LOBBY_TIME = 60; // 募集フェーズの秒数
-        const TURN_TIME = 20;  // 各プレイヤーの持ち時間
-        const RESULT_TIME = 10; // 結果表示から次の募集へ行くまでの秒数
+        // --- 5分おきシステム設定 ---
+        const CYCLE_TOTAL = 300; // 5分 = 300秒[cite: 26]
+        const LOBBY_TIME = 240;  // 最初の4分間をロビーでの募集時間とする[cite: 26]
         const MAX_PLAYERS = 4;
+        const TURN_TIME_LIMIT = 10; // 各ターンの持ち時間（秒）
 
         // --- 状態管理・サーバー同期用変数 ---
         let balance = 0;
@@ -414,7 +413,6 @@
         let isDataLoaded = false;
         
         let currentPhase = 'lobby'; // 'lobby', 'playing', 'result'
-        let systemTimer = LOBBY_TIME;
         let mainInterval = null;
         
         // --- ゲームデータ ---
@@ -424,10 +422,14 @@
         let currentPlayerIndex = 0;
         let joinedCount = 0;
         
-        let hasJoinedLocally = false;
-        let localPlayerId = -1; // 自分のIDを判別するため
+        let hasJoinedLocally = false; // 自分ひとりで複数枠を買い占めるのを防ぐ（1枠限定）[cite: 26]
+        let localPlayerId = -1;
         let selectedChipValue = 100;
         let currentBet = 0;
+        
+        let turnTimer = 0;
+        let isDealerTurn = false;
+        let isTransitioning = false; // 思考中などはタイマーを減らさない
 
         const suits = ['♠', '♥', '♦', '♣'];
         const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -470,31 +472,43 @@
                 balance += currentBet;
                 currentBet = 0;
                 hasJoinedLocally = false;
-                // sendBeaconで非同期かつ確実にサーバーへ送信
                 const data = JSON.stringify({ gold: balance, inventory: playerInventory });
                 navigator.sendBeacon('/api/update_player', new Blob([data], { type: 'application/json' }));
             }
         }
 
-        // 戻るボタン押下時
         function returnToMenu() {
             refundBets();
             window.location.href = 'index.html';
         }
 
-        // ブラウザの戻る・リロード・タブ閉じ時
         window.addEventListener('beforeunload', refundBets);
-
 
         function updateUI() {
             const balEl = document.getElementById('balance');
             if(balEl) balEl.innerText = balance.toLocaleString();
+            document.getElementById('lobby-count').innerText = joinedCount;
         }
 
         // --- 起動時処理 ---
         window.onload = () => {
             loadUserData();
-            startLobby();
+            
+            const now = Math.floor(Date.now() / 1000);
+            const cycleTime = now % CYCLE_TOTAL;
+            
+            // ページを開いたタイミングが、ちょうどゲーム中(240秒〜300秒)だった場合の処理
+            if (cycleTime >= LOBBY_TIME) {
+                currentPhase = 'result';
+                document.getElementById('lobby-screen').className = 'screen';
+                document.getElementById('game-screen').className = 'screen active';
+                document.getElementById('turn-info').innerText = "現在ゲーム進行中です。次の募集をお待ちください...";
+                document.getElementById('dealer-section').style.display = 'none';
+                document.getElementById('result-controls').style.display = 'flex';
+            } else {
+                startLobby(cycleTime);
+            }
+            
             mainInterval = setInterval(systemLoop, 1000);
 
             // チップ選択イベント
@@ -508,60 +522,79 @@
             });
         };
 
-        // --- メインループ ---
+        // --- メインループ (5分おき現実時間同期) ---
         function systemLoop() {
-            if (systemTimer > 0) systemTimer--;
+            const now = Math.floor(Date.now() / 1000);
+            const cycleTime = now % CYCLE_TOTAL;
 
-            if (currentPhase === 'lobby') {
-                document.getElementById('lobby-timer').innerText = systemTimer;
-                
-                // 時間切れ時
-                if (systemTimer <= 0) {
+            if (cycleTime < LOBBY_TIME) {
+                // 【募集フェーズ】
+                if (currentPhase !== 'lobby') {
+                    startLobby(cycleTime);
+                }
+
+                const timeLeft = LOBBY_TIME - cycleTime;
+                document.getElementById('lobby-timer').innerText = timeLeft;
+
+            } else {
+                // 【ゲーム開始・結果フェーズ】 (残り1分)
+                if (currentPhase === 'lobby') {
                     if (joinedCount > 0) {
                         startGame();
                     } else {
-                        systemTimer = LOBBY_TIME; // 誰もいなければループ延長
+                        // 誰も参加しなかった場合スキップして待機
+                        currentPhase = 'result';
+                        document.getElementById('lobby-screen').className = 'screen';
+                        document.getElementById('game-screen').className = 'screen active';
+                        document.getElementById('turn-info').innerText = "参加者がいませんでした...";
+                        document.getElementById('dealer-section').style.display = 'none';
+                        document.getElementById('players-area').innerHTML = '';
+                        document.getElementById('result-controls').style.display = 'flex';
                     }
                 }
-            } 
-            else if (currentPhase === 'playing') {
-                const turnInfo = document.getElementById('turn-info');
-                
-                let pLabel = players[currentPlayerIndex].id === localPlayerId ? "(あなた)" : "";
-                turnInfo.innerHTML = `Player ${players[currentPlayerIndex].id} ${pLabel} のターン - 残り <span class="${systemTimer <= 5 ? 'time-warning' : ''}">${systemTimer}</span> 秒`;
-                
-                // 持ち時間切れ
-                if (systemTimer <= 0) {
-                    playerAction('stand'); // 強制スタンド
+
+                if (currentPhase === 'playing') {
+                    // ターンタイマーの処理
+                    if (!isDealerTurn && !isTransitioning) {
+                        turnTimer--;
+                        const turnInfo = document.getElementById('turn-info');
+                        let pLabel = players[currentPlayerIndex].id === localPlayerId ? "(あなた)" : "";
+                        turnInfo.innerHTML = `Player ${players[currentPlayerIndex].id} ${pLabel} のターン - 残り <span class="${turnTimer <= 3 ? 'time-warning' : ''}">${turnTimer}</span> 秒`;
+
+                        // 人間プレイヤーの操作時間切れは自動でSTAND
+                        if (turnTimer <= 0) {
+                            playerAction('stand'); 
+                        }
+                    }
                 }
-            } 
-            else if (currentPhase === 'result') {
-                document.getElementById('result-timer').innerText = systemTimer;
-                if (systemTimer <= 0) {
-                    startLobby();
+
+                if (currentPhase === 'result') {
+                    const nextLobbyIn = CYCLE_TOTAL - cycleTime;
+                    document.getElementById('result-timer').innerText = nextLobbyIn;
                 }
             }
         }
 
         // --- フェーズ管理：ロビー ---
-        function startLobby() {
+        function startLobby(currentCycleTime = 0) {
             currentPhase = 'lobby';
             joinedCount = 0;
-            systemTimer = LOBBY_TIME;
             
-            hasJoinedLocally = false;
+            hasJoinedLocally = false; // 1人1枠の制限リセット[cite: 26]
             localPlayerId = -1;
             currentBet = 0;
             
             document.getElementById('lobby-screen').className = 'screen active';
             document.getElementById('game-screen').className = 'screen';
+            document.getElementById('player-controls').style.display = 'none';
+            document.getElementById('result-controls').style.display = 'none';
+            document.getElementById('dealer-section').style.display = 'block'; // 次のゲーム用に表示戻す
             
             const joinBtn = document.getElementById('join-btn');
             joinBtn.disabled = false;
             joinBtn.innerText = '参加する';
             joinBtn.style.background = '';
 
-            updateLobbyUI();
             updateUI();
         }
 
@@ -581,35 +614,23 @@
             localPlayerId = joinedCount + 1;
             processJoin();
 
-            // UIボタン変更
+            // 買い占め防止：ボタンロック[cite: 26]
             const joinBtn = document.getElementById('join-btn');
             joinBtn.disabled = true;
             joinBtn.innerText = `受付完了 (Bet: ${currentBet}G)`;
         }
 
-        // CPU（ダミー）を参加させる処理（テスト用）
-        function joinDummy() {
-            if (currentPhase !== 'lobby' || joinedCount >= MAX_PLAYERS) return;
-            processJoin();
-        }
-
         // 共通の参加ロジック
         function processJoin() {
             joinedCount++;
-            updateLobbyUI();
+            updateUI();
             
-            // 満員になったら5秒後に強制スタート
-            if (joinedCount === MAX_PLAYERS) {
+            // 満員になったらボタンを使用不可に
+            if (joinedCount >= MAX_PLAYERS) {
                 const joinBtn = document.getElementById('join-btn');
                 joinBtn.disabled = true;
                 if(!hasJoinedLocally) joinBtn.innerText = '満員御礼！';
-                
-                if (systemTimer > 5) systemTimer = 5; 
             }
-        }
-
-        function updateLobbyUI() {
-            document.getElementById('lobby-count').innerText = joinedCount;
         }
 
         // --- フェーズ管理：ゲーム進行 ---
@@ -651,23 +672,19 @@
                 return;
             }
 
+            // ターン開始時タイマーリセット
+            turnTimer = TURN_TIME_LIMIT;
+            isTransitioning = false;
+            isDealerTurn = false;
+
             // 自分のターンのみボタンを表示する
             if (players[currentPlayerIndex].id === localPlayerId) {
                 document.getElementById('player-controls').style.display = 'flex';
             } else {
                 document.getElementById('player-controls').style.display = 'none';
-                
-                // CPUの場合は1〜3秒後に適当にアクションする
-                setTimeout(() => {
-                    if (currentPhase === 'playing' && players[currentPlayerIndex].id !== localPlayerId) {
-                        let score = calculateScore(players[currentPlayerIndex].hand);
-                        if (score < 17) playerAction('hit');
-                        else playerAction('stand');
-                    }
-                }, 1000 + Math.random() * 2000);
+                // 他の人間プレイヤーのターン（サーバー等の入力を待つ間、時間切れで自動STANDへ進みます）
             }
 
-            systemTimer = TURN_TIME;
             render();
         }
 
@@ -679,7 +696,6 @@
                     deck.push({ suit, value });
                 }
             }
-            // シャッフル
             for (let i = deck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -703,7 +719,6 @@
                 if (calculateScore(p.hand) === 21) {
                     p.status = 'bj';
                     p.resultMsg = 'BLACKJACK';
-                    // ディーラーのBJ確認待ちなのでこの時点では配当確定しない
                 }
             });
         }
@@ -721,7 +736,7 @@
                     currentPlayerIndex++;
                     startTurn();
                 } else {
-                    systemTimer = TURN_TIME; // リセット
+                    turnTimer = TURN_TIME_LIMIT; // ヒットしたら時間リセット
                     render();
                 }
             } else if (type === 'stand') {
@@ -732,6 +747,7 @@
         }
 
         function dealerTurn() {
+            isDealerTurn = true;
             document.getElementById('player-controls').style.display = 'none';
             document.getElementById('turn-info').innerHTML = "ディーラーのターン <span style='font-size:0.8rem'>(Thinking...)</span>";
             render(true); // まずディーラーのカードを表にする
@@ -798,13 +814,11 @@
                 }
 
                 finishRound();
-            }, 1200); // もったいぶる演出（1.2秒）
+            }, 1200); // もったいぶる演出
         }
 
         function finishRound() {
             currentPhase = 'result';
-            systemTimer = RESULT_TIME;
-            
             document.getElementById('turn-info').innerText = "=== RESULT ===";
             document.getElementById('result-controls').style.display = 'flex';
             render(true);
