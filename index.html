@@ -26,8 +26,8 @@
 
         <h1>どこへ向かう？</h1>
         <div class="menu-grid">
-            <!-- ★ここを修正：準備中アラートを消して、kazino.html に飛ぶように変更 -->
-            <div class="menu-card" onclick="window.location.href='kazino.html'">
+            <!-- ★修正：カジノボタンを押すと選択画面が開くように変更 -->
+            <div class="menu-card" onclick="document.getElementById('main-menu').style.display='none'; document.getElementById('casino-select-container').style.display='block';">
                 <i class="menu-icon icon-casino"></i>
                 <h3>カジノ</h3>
             </div>
@@ -48,6 +48,23 @@
                 <h3>消費者金融</h3>
             </div>
         </div>
+    </div>
+
+    <!-- ★新規追加：カジノ選択画面 -->
+    <div id="casino-select-container" style="display: none;">
+        <h1 style="color: #d4af37;">カジノエントランス</h1>
+        <p style="text-align: center; color: #ccc;">どちらのテーブルに着きますか？</p>
+        <div class="menu-grid" style="grid-template-columns: 1fr 1fr; max-width: 400px; margin: 30px auto;">
+            <div class="menu-card" onclick="window.location.href='kazino.html'">
+                <div class="menu-icon-text" style="font-size: 3em; margin: 10px 0;">🎰</div>
+                <h3 style="color: #fff;">ルーレット</h3>
+            </div>
+            <div class="menu-card" onclick="window.location.href='blackjack.html'">
+                <div class="menu-icon-text" style="font-size: 3em; margin: 10px 0;">🃏</div>
+                <h3 style="color: #fff;">ブラックジャック</h3>
+            </div>
+        </div>
+        <button onclick="document.getElementById('casino-select-container').style.display='none'; document.getElementById('main-menu').style.display='block';" style="margin-top: 20px; width: 100%; background-color: #555;">◀ メニューに戻る</button>
     </div>
 
     <div id="admin-container" style="display: none;">

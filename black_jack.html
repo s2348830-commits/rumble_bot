@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Multi - Premium Edition</title>
+    <style>
+        /* --- 全体カラー・変数 --- */
+        :root {
+            --table-center: #2e7d32;
+            --table-edge: #123614;
+            --panel-bg: rgba(0, 0, 0, 0.4);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8f9fa;
+            --accent-gold: #f1c40f;
+            --accent-gold-glow: 0 0 20px rgba(241, 196, 15, 0.5);
+            --danger-red: #e74c3c;
+            --safe-green: #2ecc71;
+            --info-blue: #3498db;
+            --card-white: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 20px 10px;
+            min-height: 100vh;
+            background: radial-gradient(circle at center, var(--table-center) 0%, var(--table-edge) 100%);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 2.2rem;
+            letter-spacing: 3px;
+            color: var(--accent-gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        /* --- 画面コンテナ --- */
+        .screen {
+            width: 100%;
+            max-width: 1000px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+            border: 1px solid var(--panel-border);
+            box-sizing: border-box;
+            display: none;
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* --- ロビー画面 --- */
+        .timer-circle {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            border: 6px solid var(--accent-gold);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3.5rem;
+            font-weight: bold;
+            margin: 10px 0 20px 0;
+            background: rgba(0,0,0,0.5);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 0 15px rgba(241, 196, 15, 0.3);
+            text-shadow: 0 0 10px var(--accent-gold);
+        }
+
+        .lobby-info {
+            font-size: 1.3rem;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        /* --- チップ選択エリア --- */
+        .chip-selector {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .chip-option {
+            width: 45px;
+            height: 45px;
+            background: radial-gradient(circle, #fff 20%, var(--accent-gold) 100%);
+            border: 2px dashed #fff;
+            border-radius: 50%;
+            color: #000;
+            font-size: 14px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .chip-option.selected {
+            transform: scale(1.2);
+            box-shadow: 0 0 15px var(--accent-gold);
+            border-color: yellow;
+        }
+
+        .join-btn {
+            background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%);
+            color: #111;
+            font-size: 1.5rem;
+            padding: 15px 50px;
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            margin-bottom: 10px;
+        }
+        
+        .join-btn:hover:not(:disabled) {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: var(--accent-gold-glow);
+        }
+
+        .join-btn:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .debug-btn {
+            background: rgba(255,255,255,0.1);
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+            font-weight: bold;
+            margin-top: 10px;
+            width: 100%;
+            max-width: 250px;
+        }
+        .debug-btn:hover { background: rgba(255,255,255,0.2); }
+
+        /* --- ゲーム画面 --- */
+        .turn-indicator {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: var(--text-main);
+            margin: 0 0 20px 0;
+            text-align: center;
+            background: rgba(0,0,0,0.6);
+            padding: 10px 30px;
+            border-radius: 30px;
+            border: 1px solid var(--accent-gold);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .time-warning {
+            color: var(--danger-red);
+            animation: blink 0.8s infinite alternate;
+        }
+
+        .dealer-section {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 16px;
+            border-top: 2px solid rgba(255,255,255,0.05);
+        }
+
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            width: 100%;
+            margin-bottom: 25px;
+        }
+
+        .player-box {
+            background: rgba(0,0,0,0.3);
+            padding: 20px 15px;
+            border-radius: 16px;
+            border: 2px solid transparent;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .player-box.active {
+            background: rgba(241, 196, 15, 0.1);
+            border-color: var(--accent-gold);
+            box-shadow: var(--accent-gold-glow);
+            transform: translateY(-8px);
+        }
+
+        /* --- カードUI --- */
+        .hand-display {
+            display: flex;
+            justify-content: center;
+            min-height: 100px;
+            margin-top: 15px;
+            padding: 0 10px;
+        }
+
+        .card {
+            width: 60px;
+            height: 88px;
+            background-color: var(--card-white);
+            border-radius: 6px;
+            color: #111;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5px;
+            box-shadow: -3px 3px 10px rgba(0,0,0,0.4);
+            font-weight: bold;
+            font-size: 1rem;
+            margin-right: -25px;
+            position: relative;
+            animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            opacity: 0;
+            border: 1px solid #ccc;
+        }
+        .card:last-child { margin-right: 0; }
+
+        .card .top-left { align-self: flex-start; line-height: 1; }
+        .card .center-suit { font-size: 2rem; align-self: center; line-height: 1; }
+        .card .bottom-right { align-self: flex-end; line-height: 1; transform: rotate(180deg); }
+
+        .card.red { color: #d32f2f; }
+        .card.back { 
+            background: repeating-linear-gradient(45deg, #1e3c72, #1e3c72 5px, #2a5298 5px, #2a5298 10px);
+            border: 2px solid #fff;
+            color: transparent;
+        }
+        .card.back > div { display: none; }
+
+        /* --- 操作パネル等 --- */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 10px;
+            height: 50px;
+        }
+
+        button.action-btn {
+            padding: 12px 35px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            transition: all 0.2s;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        button.action-btn:hover { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 6px 12px rgba(0,0,0,0.4); }
+        button.action-btn:active { transform: translateY(1px); box-shadow: 0 2px 3px rgba(0,0,0,0.3); }
+
+        #hit-btn { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); }
+        #stand-btn { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
+
+        .score-badge {
+            background: rgba(0,0,0,0.8);
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 1rem;
+            margin-left: 10px;
+            border: 1px solid #555;
+        }
+
+        .result-label {
+            font-size: 1.3rem;
+            font-weight: 900;
+            margin-top: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* --- アニメーション --- */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes blink {
+            from { opacity: 1; text-shadow: 0 0 10px var(--danger-red); }
+            to { opacity: 0.4; text-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>♠ BLACKJACK MULTI ♣</h1>
+
+    <!-- 1. ロビー（募集）フェーズ -->
+    <div id="lobby-screen" class="screen active">
+        
+        <div style="width: 100%; margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--accent-gold); display: flex; justify-content: space-around; font-size: 1.2rem; box-sizing: border-box;">
+            <div>ゴールド: <span id="balance">0</span> G</div>
+        </div>
+
+        <h2 style="margin-top: 0; color: #ccc;">賭け金を選んで参加</h2>
+        
+        <!-- チップ選択 -->
+        <div class="chip-selector">
+            <div class="chip-option selected" data-val="100">100</div>
+            <div class="chip-option" data-val="500">500</div>
+            <div class="chip-option" data-val="1000">1k</div>
+            <div class="chip-option" data-val="5000">5k</div>
+        </div>
+
+        <div class="timer-circle">
+            <span id="lobby-timer">60</span>
+        </div>
+        <div class="lobby-info">
+            <p>現在の参加人数: <strong id="lobby-count" style="font-size:1.8rem; color: var(--accent-gold);">0</strong> <span style="font-size:1.2rem;">/ 4 人</span></p>
+        </div>
+        
+        <!-- プレイヤー参加ボタン -->
+        <button id="join-btn" class="join-btn" onclick="joinGame()">参加する</button>
+        
+        <!-- 開発用 / メニュー戻る -->
+        <button class="debug-btn" onclick="joinDummy()" style="margin-bottom: 15px; border-color: #333; background: #222;">[開発用] CPUを追加</button>
+        <button class="debug-btn" onclick="window.location.href='index.html'" style="background: #444; border-color: #666;">◀ メニューに戻る</button>
+
+        <p style="font-size: 0.9rem; color: #888; margin-top: 20px;">※1人以上参加で、時間が来たら自動開始します</p>
+    </div>
+
+    <!-- 2. ゲームフェーズ & 3. 結果フェーズ -->
+    <div id="game-screen" class="screen">
+        
+        <div class="turn-indicator" id="turn-info">準備中...</div>
+
+        <!-- ディーラー -->
+        <div class="dealer-section">
+            <h3 style="margin:0 0 10px 0; font-size: 1.3rem;">DEALER <span id="dealer-score" class="score-badge">?</span></h3>
+            <div id="dealer-hand" class="hand-display"></div>
+        </div>
+
+        <!-- プレイヤーたち -->
+        <div id="players-area" class="players-grid"></div>
+
+        <!-- 操作パネル -->
+        <div class="controls" id="player-controls" style="display: none;">
+            <button id="hit-btn" class="action-btn" onclick="playerAction('hit')">HIT</button>
+            <button id="stand-btn" class="action-btn" onclick="playerAction('stand')">STAND</button>
+        </div>
+
+        <!-- 結果時のカウントダウン表示など -->
+        <div class="controls" id="result-controls" style="display: none;">
+            <div style="font-size: 1.3rem; font-weight: bold; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 10px;">
+                次の募集まで <span id="result-timer" style="color: var(--accent-gold); font-size: 1.5rem;">10</span> 秒...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- システム設定 ---
+        const LOBBY_TIME = 60; // 募集フェーズの秒数
+        const TURN_TIME = 20;  // 各プレイヤーの持ち時間
+        const RESULT_TIME = 10; // 結果表示から次の募集へ行くまでの秒数
+        const MAX_PLAYERS = 4;
+
+        // --- 状態管理・サーバー同期用変数 ---
+        let balance = 0;
+        let playerInventory = {};
+        let isDataLoaded = false;
+        
+        let currentPhase = 'lobby'; // 'lobby', 'playing', 'result'
+        let systemTimer = LOBBY_TIME;
+        let mainInterval = null;
+        
+        // --- ゲームデータ ---
+        let deck = [];
+        let players = [];
+        let dealer = { hand: [], score: 0 };
+        let currentPlayerIndex = 0;
+        let joinedCount = 0;
+        
+        let hasJoinedLocally = false;
+        let localPlayerId = -1; // 自分のIDを判別するため
+        let selectedChipValue = 100;
+        let currentBet = 0;
+
+        const suits = ['♠', '♥', '♦', '♣'];
+        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        // --- サーバー連携 ---
+        async function loadUserData() {
+            try {
+                const res = await fetch('/api/me');
+                const data = await res.json();
+                if (data.loggedIn) {
+                    balance = data.user.gold;
+                    playerInventory = data.user.inventory || {};
+                    isDataLoaded = true;
+                    updateUI();
+                } else {
+                    alert("ログイン情報が取得できません。メニューに戻ります。");
+                    window.location.href = 'index.html';
+                }
+            } catch (e) {
+                console.error("ユーザー情報の取得に失敗しました", e);
+            }
+        }
+
+        async function syncGoldToServer() {
+            if (!isDataLoaded) return;
+            try {
+                await fetch('/api/update_player', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gold: balance, inventory: playerInventory })
+                });
+            } catch(e) {
+                console.error("ゴールドの同期に失敗しました", e);
+            }
+        }
+
+        function updateUI() {
+            const balEl = document.getElementById('balance');
+            if(balEl) balEl.innerText = balance.toLocaleString();
+        }
+
+        // --- 起動時処理 ---
+        window.onload = () => {
+            loadUserData();
+            startLobby();
+            mainInterval = setInterval(systemLoop, 1000);
+
+            // チップ選択イベント
+            document.querySelectorAll('.chip-option').forEach(el => {
+                el.addEventListener('click', () => {
+                    if (hasJoinedLocally) return; // 参加後は変更不可
+                    document.querySelectorAll('.chip-option').forEach(c => c.classList.remove('selected'));
+                    el.classList.add('selected');
+                    selectedChipValue = parseInt(el.dataset.val);
+                });
+            });
+        };
+
+        // --- メインループ ---
+        function systemLoop() {
+            if (systemTimer > 0) systemTimer--;
+
+            if (currentPhase === 'lobby') {
+                document.getElementById('lobby-timer').innerText = systemTimer;
+                
+                // 時間切れ時
+                if (systemTimer <= 0) {
+                    if (joinedCount > 0) {
+                        startGame();
+                    } else {
+                        systemTimer = LOBBY_TIME; // 誰もいなければループ延長
+                    }
+                }
+            } 
+            else if (currentPhase === 'playing') {
+                const turnInfo = document.getElementById('turn-info');
+                
+                let pLabel = players[currentPlayerIndex].id === localPlayerId ? "(あなた)" : "";
+                turnInfo.innerHTML = `Player ${players[currentPlayerIndex].id} ${pLabel} のターン - 残り <span class="${systemTimer <= 5 ? 'time-warning' : ''}">${systemTimer}</span> 秒`;
+                
+                // 持ち時間切れ
+                if (systemTimer <= 0) {
+                    playerAction('stand'); // 強制スタンド
+                }
+            } 
+            else if (currentPhase === 'result') {
+                document.getElementById('result-timer').innerText = systemTimer;
+                if (systemTimer <= 0) {
+                    startLobby();
+                }
+            }
+        }
+
+        // --- フェーズ管理：ロビー ---
+        function startLobby() {
+            currentPhase = 'lobby';
+            joinedCount = 0;
+            systemTimer = LOBBY_TIME;
+            
+            hasJoinedLocally = false;
+            localPlayerId = -1;
+            currentBet = 0;
+            
+            document.getElementById('lobby-screen').className = 'screen active';
+            document.getElementById('game-screen').className = 'screen';
+            
+            const joinBtn = document.getElementById('join-btn');
+            joinBtn.disabled = false;
+            joinBtn.innerText = '参加する';
+            joinBtn.style.background = '';
+
+            updateLobbyUI();
+            updateUI();
+        }
+
+        // 自分が参加する処理
+        function joinGame() {
+            if (currentPhase !== 'lobby' || joinedCount >= MAX_PLAYERS || hasJoinedLocally) return;
+            if (!isDataLoaded) { alert("データを読み込み中です..."); return; }
+            if (balance < selectedChipValue) { alert("ゴールドが足りません！"); return; }
+            
+            // ゴールドの消費と同期
+            balance -= selectedChipValue;
+            currentBet = selectedChipValue;
+            updateUI();
+            syncGoldToServer();
+
+            hasJoinedLocally = true;
+            localPlayerId = joinedCount + 1;
+            processJoin();
+
+            // UIボタン変更
+            const joinBtn = document.getElementById('join-btn');
+            joinBtn.disabled = true;
+            joinBtn.innerText = `受付完了 (Bet: ${currentBet}G)`;
+        }
+
+        // CPU（ダミー）を参加させる処理（テスト用）
+        function joinDummy() {
+            if (currentPhase !== 'lobby' || joinedCount >= MAX_PLAYERS) return;
+            processJoin();
+        }
+
+        // 共通の参加ロジック
+        function processJoin() {
+            joinedCount++;
+            updateLobbyUI();
+            
+            // 満員になったら5秒後に強制スタート
+            if (joinedCount === MAX_PLAYERS) {
+                const joinBtn = document.getElementById('join-btn');
+                joinBtn.disabled = true;
+                if(!hasJoinedLocally) joinBtn.innerText = '満員御礼！';
+                
+                if (systemTimer > 5) systemTimer = 5; 
+            }
+        }
+
+        function updateLobbyUI() {
+            document.getElementById('lobby-count').innerText = joinedCount;
+        }
+
+        // --- フェーズ管理：ゲーム進行 ---
+        function startGame() {
+            currentPhase = 'playing';
+            document.getElementById('lobby-screen').className = 'screen';
+            document.getElementById('game-screen').className = 'screen active';
+            
+            createDeck();
+            dealer.hand = [deck.pop(), deck.pop()];
+            players = [];
+            
+            for (let i = 0; i < joinedCount; i++) {
+                players.push({
+                    id: i + 1,
+                    hand: [deck.pop(), deck.pop()],
+                    status: 'playing',
+                    resultMsg: ''
+                });
+            }
+            
+            currentPlayerIndex = 0;
+            document.getElementById('result-controls').style.display = 'none';
+            
+            checkInitialBlackjacks();
+            startTurn();
+        }
+
+        function startTurn() {
+            if (currentPlayerIndex >= joinedCount) {
+                dealerTurn();
+                return;
+            }
+
+            if (players[currentPlayerIndex].status !== 'playing') {
+                currentPlayerIndex++;
+                startTurn();
+                return;
+            }
+
+            // 自分のターンのみボタンを表示する
+            if (players[currentPlayerIndex].id === localPlayerId) {
+                document.getElementById('player-controls').style.display = 'flex';
+            } else {
+                document.getElementById('player-controls').style.display = 'none';
+                
+                // CPUの場合は1〜3秒後に適当にアクションする
+                setTimeout(() => {
+                    if (currentPhase === 'playing' && players[currentPlayerIndex].id !== localPlayerId) {
+                        let score = calculateScore(players[currentPlayerIndex].hand);
+                        if (score < 17) playerAction('hit');
+                        else playerAction('stand');
+                    }
+                }, 1000 + Math.random() * 2000);
+            }
+
+            systemTimer = TURN_TIME;
+            render();
+        }
+
+        // --- ゲームロジック ---
+        function createDeck() {
+            deck = [];
+            for (let suit of suits) {
+                for (let value of values) {
+                    deck.push({ suit, value });
+                }
+            }
+            // シャッフル
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        function calculateScore(hand) {
+            let score = 0;
+            let aces = 0;
+            for (let card of hand) {
+                if (['J', 'Q', 'K'].includes(card.value)) score += 10;
+                else if (card.value === 'A') { score += 11; aces++; }
+                else score += parseInt(card.value);
+            }
+            while (score > 21 && aces > 0) { score -= 10; aces--; }
+            return score;
+        }
+
+        function checkInitialBlackjacks() {
+            players.forEach(p => {
+                if (calculateScore(p.hand) === 21) {
+                    p.status = 'bj';
+                    p.resultMsg = 'BLACKJACK';
+                }
+            });
+        }
+
+        function playerAction(type) {
+            if (currentPhase !== 'playing') return;
+
+            let p = players[currentPlayerIndex];
+            if (type === 'hit') {
+                p.hand.push(deck.pop());
+                if (calculateScore(p.hand) > 21) {
+                    p.status = 'bust';
+                    p.resultMsg = 'BUST';
+                    currentPlayerIndex++;
+                    startTurn();
+                } else {
+                    systemTimer = TURN_TIME; // リセット
+                    render();
+                }
+            } else if (type === 'stand') {
+                p.status = 'stand';
+                currentPlayerIndex++;
+                startTurn();
+            }
+        }
+
+        function dealerTurn() {
+            document.getElementById('player-controls').style.display = 'none';
+            document.getElementById('turn-info').innerHTML = "ディーラーのターン <span style='font-size:0.8rem'>(Thinking...)</span>";
+            render(true); // まずディーラーのカードを表にする
+            
+            setTimeout(() => {
+                while (calculateScore(dealer.hand) < 17) {
+                    dealer.hand.push(deck.pop());
+                }
+
+                const dScore = calculateScore(dealer.hand);
+                let winAmount = 0;
+                
+                players.forEach(p => {
+                    const pScore = calculateScore(p.hand);
+                    if (p.status === 'bust') p.resultMsg = "LOSE (BUST)";
+                    else if (p.status === 'bj') {
+                        p.resultMsg = (dScore === 21 && dealer.hand.length === 2) ? "PUSH" : "WIN (BJ)";
+                    }
+                    else if (dScore > 21) p.resultMsg = "WIN (D-BUST)";
+                    else if (pScore > dScore) p.resultMsg = "WIN";
+                    else if (pScore < dScore) p.resultMsg = "LOSE";
+                    else p.resultMsg = "PUSH";
+
+                    // 自分自身の配当計算
+                    if (p.id === localPlayerId) {
+                        if (p.resultMsg.includes("WIN (BJ)")) winAmount = Math.floor(currentBet * 2.5);
+                        else if (p.resultMsg.includes("WIN")) winAmount = currentBet * 2;
+                        else if (p.resultMsg.includes("PUSH")) winAmount = currentBet;
+                    }
+                });
+
+                // 配当付与と同期
+                if (winAmount > 0) {
+                    balance += winAmount;
+                }
+                updateUI();
+                if (hasJoinedLocally) syncGoldToServer();
+
+                finishRound();
+            }, 1200); // もったいぶる演出（1.2秒）
+        }
+
+        function finishRound() {
+            currentPhase = 'result';
+            systemTimer = RESULT_TIME;
+            
+            document.getElementById('turn-info').innerText = "=== RESULT ===";
+            document.getElementById('result-controls').style.display = 'flex';
+            render(true);
+        }
+
+        // --- UI描画 ---
+        function render(showDealer = false) {
+            const dealerHandDiv = document.getElementById('dealer-hand');
+            dealerHandDiv.innerHTML = '';
+            dealer.hand.forEach((c, i) => {
+                dealerHandDiv.appendChild(createCardUI(c, !showDealer && i === 1));
+            });
+            document.getElementById('dealer-score').innerText = showDealer ? calculateScore(dealer.hand) : '?';
+
+            const area = document.getElementById('players-area');
+            area.innerHTML = '';
+            players.forEach((p, i) => {
+                const box = document.createElement('div');
+                // 自分のボックスは縁を光らせて分かりやすく
+                const isLocal = p.id === localPlayerId ? 'border-color: #2ecc71;' : '';
+                
+                box.className = `player-box ${i === currentPlayerIndex && currentPhase === 'playing' ? 'active' : ''}`;
+                if(isLocal && !(i === currentPlayerIndex && currentPhase === 'playing')) {
+                    box.style.border = "2px solid #2ecc71";
+                }
+                
+                const score = calculateScore(p.hand);
+                const pLabel = p.id === localPlayerId ? " <small style='color:#2ecc71;'>(あなた)</small>" : "";
+
+                box.innerHTML = `
+                    <div style="font-weight:bold; font-size:1.2rem; margin-bottom:5px;">
+                        PLAYER ${p.id} ${pLabel} <span class="score-badge">${score}</span>
+                    </div>
+                    <div class="hand-display"></div>
+                    <span class="result-label" style="color:${getResultColor(p.resultMsg)}">${p.resultMsg}</span>
+                `;
+                
+                const handDiv = box.querySelector('.hand-display');
+                // 少しずつ遅れてカードを配るアニメーション用
+                p.hand.forEach((c, index) => {
+                    const cardElement = createCardUI(c);
+                    cardElement.style.animationDelay = `${index * 0.1}s`;
+                    handDiv.appendChild(cardElement);
+                });
+                area.appendChild(box);
+            });
+        }
+
+        function createCardUI(card, isHidden) {
+            const div = document.createElement('div');
+            div.className = 'card' + (isHidden ? ' back' : '');
+            if (isHidden) return div;
+
+            if (card.suit === '♥' || card.suit === '♦') div.classList.add('red');
+            div.innerHTML = `
+                <div class="top-left">${card.value}</div>
+                <div class="center-suit">${card.suit}</div>
+                <div class="bottom-right">${card.value}</div>
+            `;
+            return div;
+        }
+
+        function getResultColor(msg) {
+            if (msg.includes('WIN')) return 'var(--accent-gold)';
+            if (msg.includes('LOSE') || msg.includes('BUST')) return 'var(--danger-red)';
+            if (msg.includes('PUSH')) return 'var(--info-blue)';
+            return 'transparent';
+        }
+    </script>
+</body>
+</html>
